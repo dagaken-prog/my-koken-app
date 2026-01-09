@@ -103,7 +103,7 @@ st.markdown("""
         margin-top: 5px;
     }
 
-    /* --- ファイルアップローダーの日本語化ハック (修正版) --- */
+    /* --- ファイルアップローダーの日本語化ハック (修正版2) --- */
     /* 元のテキストを非表示にする */
     [data-testid="stFileUploaderDropzone"] div div span {
         display: none;
@@ -205,12 +205,16 @@ def normalize_date_str(date_val):
 
 def calculate_age(born):
     if not born: return None
+    # まず文字列にして空白除去
+    born_str = str(born).strip()
+    if not born_str or born_str.lower() == 'nan': return None
     try:
-        born_date = pd.to_datetime(born, errors='coerce')
+        born_date = pd.to_datetime(born_str, errors='coerce')
         if pd.isna(born_date): return None
         born_date = born_date.date()
         today = datetime.date.today()
-        return today.year - born_date.year - ((today.month, today.day) < (born.month, born.day))
+        # ★修正: born.month ではなく born_date.month を使う
+        return today.year - born_date.year - ((today.month, today.day) < (born_date.month, born_date.day))
     except:
         return None
 
@@ -340,7 +344,6 @@ def custom_title(text):
 # --- カスタムヘッダー関数（ヘルプボタン位置修正版） ---
 def custom_header(text, help_text=None):
     if help_text:
-        # 見出しのカラム幅を調整してボタンを寄せる
         col1, col2, col3 = st.columns([3, 0.5, 6.5])
         with col1:
             st.markdown(f'<div class="custom-header-text">{text}</div>', unsafe_allow_html=True)
@@ -348,8 +351,7 @@ def custom_header(text, help_text=None):
             with st.popover("?"):
                 st.info(help_text)
         with col3:
-            st.write("") # スペーサー
-        # 下線
+            st.write("") 
         st.markdown('<div class="custom-header-line"></div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="custom-header">{text}</div>', unsafe_allow_html=True)
@@ -366,10 +368,12 @@ def main():
 
     df_persons, df_activities = load_data_from_sheet(sheet_connection)
 
-    # 年齢計算
+    # 年齢計算 (データフレーム全体に対して計算)
     if '生年月日' in df_persons.columns:
         if not df_persons.empty:
             df_persons['年齢'] = df_persons['生年月日'].apply(calculate_age)
+            # ★修正: ここで数値型に変換しておく
+            df_persons['年齢'] = pd.to_numeric(df_persons['年齢'], errors='coerce')
         else:
             df_persons['年齢'] = None
 
@@ -392,19 +396,16 @@ def main():
         else:
             df_active = df_persons.copy()
 
-        # 表示カラム: ケース番号(ラベルNo.), 氏名, 生年月日, 年齢, 類型(ラベル後見類型)
+        # 表示カラム
         display_columns = ['ケース番号', '氏名', '生年月日', '年齢', '類型']
         available_cols = [c for c in display_columns if c in df_active.columns]
         
-        if not df_active.empty and len(available_cols) > 0:
-            df_display = df_active[available_cols]
-            # ★修正点: 年齢を数値型に変換して確実に表示させる
-            if '年齢' in df_display.columns:
-                df_display['年齢'] = pd.to_numeric(df_display['年齢'], errors='coerce')
-        else:
-            df_display = pd.DataFrame(columns=display_columns)
+        df_display = df_active[available_cols] if not df_active.empty and len(available_cols) > 0 else pd.DataFrame(columns=display_columns)
 
-        # ★修正: st.dataframe に戻して視認性を確保
+        # ★修正: 数値型であることを保証
+        if '年齢' in df_display.columns:
+            df_display['年齢'] = pd.to_numeric(df_display['年齢'], errors='coerce')
+
         selection = st.dataframe(
             df_display, 
             column_config={
@@ -422,13 +423,11 @@ def main():
             idx = selection.selection.rows[0]
             selected_row = df_active.iloc[idx]
             current_person_id = selected_row['person_id']
-            # ステートに保存しておかないと再描画で消えることがあるが、
-            # on_select="rerun" なので直後の処理は走る
             st.session_state.selected_person_id = current_person_id
             
             st.markdown("---")
             age_val = selected_row.get('年齢')
-            age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val) and age_val != "") else ""
+            age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val)) else ""
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
             # 詳細表示
@@ -481,7 +480,6 @@ def main():
                 
                 if not my_activities.empty:
                     my_activities = my_activities.sort_values('記録日', ascending=False)
-                    # 一覧表示
                     selection_act = st.dataframe(
                         my_activities[['activity_id', '記録日', '活動', '要点']],
                         column_config={"activity_id": st.column_config.NumberColumn("活動ID", format="%d")},
@@ -523,12 +521,10 @@ def main():
         
         st.markdown("### 全利用者一覧")
         
-        # ★修正: st.dataframe に戻して視認性を確保
         reg_list_cols = ['ケース番号', '氏名', '生年月日', '年齢', '現在の状態']
         available_reg_cols = [c for c in reg_list_cols if c in df_persons.columns]
         df_display_reg = df_persons[available_reg_cols] if not df_persons.empty and len(available_reg_cols) > 0 else pd.DataFrame(columns=reg_list_cols)
         
-        # ★修正点: 年齢を数値型に変換して確実に表示させる
         if not df_display_reg.empty and '年齢' in df_display_reg.columns:
             df_display_reg['年齢'] = pd.to_numeric(df_display_reg['年齢'], errors='coerce')
 
