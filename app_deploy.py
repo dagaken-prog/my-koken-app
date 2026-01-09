@@ -340,7 +340,6 @@ def custom_title(text):
 def custom_header(text, help_text=None):
     if help_text:
         # 見出しのカラム幅を調整してボタンを寄せる
-        # 例: [3, 0.5, 6.5] のような比率で左に寄せる
         col1, col2, col3 = st.columns([3, 0.5, 6.5])
         with col1:
             st.markdown(f'<div class="custom-header-text">{text}</div>', unsafe_allow_html=True)
@@ -392,117 +391,119 @@ def main():
         else:
             df_active = df_persons.copy()
 
-        # ★変更点: 表ではなく「選択ボタンのリスト」として表示（どこを押してもOKにするため）
-        if not df_active.empty:
-            # 見出し行
-            h_col1, h_col2, h_col3 = st.columns([1, 2, 4])
-            h_col1.markdown("**No.**")
-            h_col2.markdown("**氏名(年齢)**")
-            h_col3.markdown("**後見類型**")
+        # 表示カラム: ケース番号(ラベルNo.), 氏名, 生年月日, 年齢, 類型(ラベル後見類型)
+        display_columns = ['ケース番号', '氏名', '生年月日', '年齢', '類型']
+        available_cols = [c for c in display_columns if c in df_active.columns]
+        
+        df_display = df_active[available_cols] if not df_active.empty and len(available_cols) > 0 else pd.DataFrame(columns=display_columns)
+
+        # ★修正: st.dataframe に戻して視認性を確保
+        selection = st.dataframe(
+            df_display, 
+            column_config={
+                "ケース番号": st.column_config.TextColumn("No."),
+                "年齢": st.column_config.NumberColumn("年齢", format="%d歳"),
+                "類型": st.column_config.TextColumn("後見類型"),
+            },
+            use_container_width=True,
+            on_select="rerun", 
+            selection_mode="single-row", 
+            hide_index=True
+        )
+        
+        if selection.selection.rows:
+            idx = selection.selection.rows[0]
+            selected_row = df_active.iloc[idx]
+            current_person_id = selected_row['person_id']
+            # ステートに保存しておかないと再描画で消えることがあるが、
+            # on_select="rerun" なので直後の処理は走る
+            st.session_state.selected_person_id = current_person_id
             
-            for idx, row in df_active.iterrows():
-                # ボタンのラベルを作成
-                age_str = f"({int(row['年齢']) if row['年齢'] else '-'}歳)"
-                # 各行を全幅ボタンとして表示
-                label = f"{row.get('ケース番号', '')} 　 {row.get('氏名', '')} {age_str} 　 {row.get('類型', '')}"
-                
-                if st.button(label, key=f"sel_list_{idx}", use_container_width=True):
-                    st.session_state.selected_person_id = row['person_id']
-                    st.rerun()
-        else:
-            st.info("表示できる利用者がいません。")
+            st.markdown("---")
+            age_val = selected_row.get('年齢')
+            age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val) and age_val != "") else ""
+            custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
-        # 選択されている場合のみ詳細を表示
-        if st.session_state.selected_person_id:
-            # IDからデータを再取得
-            selected_rows = df_persons[df_persons['person_id'] == st.session_state.selected_person_id]
-            if not selected_rows.empty:
-                selected_row = selected_rows.iloc[0]
-                current_person_id = selected_row['person_id']
-                
-                st.markdown("---")
-                age_val = selected_row.get('年齢')
-                age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val) and age_val != "") else ""
-                custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
+            # 詳細表示
+            with st.expander("▼ 基本情報を全て表示", expanded=True):
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(f"**No. (ケース番号):** {selected_row.get('ケース番号', '')}")
+                c2.markdown(f"**基本事件番号:** {selected_row.get('基本事件番号', '')}")
+                c3.markdown(f"**類型:** {selected_row.get('類型', '')}")
+                c4, c5, c6 = st.columns(3)
+                c4.markdown(f"**氏名:** {selected_row.get('氏名', '')}")
+                c5.markdown(f"**ｼﾒｲ:** {selected_row.get('ｼﾒｲ', '')}")
+                c6.markdown(f"**生年月日:** {selected_row.get('生年月日', '')}")
+                c7, c8, c9 = st.columns(3)
+                c7.markdown(f"**障害類型:** {selected_row.get('障害類型', '')}")
+                c8.markdown(f"**申立人:** {selected_row.get('申立人', '')}")
+                c9.markdown(f"**審判確定日:** {selected_row.get('審判確定日', '')}")
+                c10, c11, c12 = st.columns(3)
+                c10.markdown(f"**管轄家裁:** {selected_row.get('管轄家裁', '')}")
+                c11.markdown(f"**家裁報告月:** {selected_row.get('家裁報告月', '')}")
+                c12.markdown(f"**現在の状態:** {selected_row.get('現在の状態', '')}")
 
-                # 詳細表示
-                with st.expander("▼ 基本情報を全て表示", expanded=True):
-                    c1, c2, c3 = st.columns(3)
-                    c1.markdown(f"**No. (ケース番号):** {selected_row.get('ケース番号', '')}")
-                    c2.markdown(f"**基本事件番号:** {selected_row.get('基本事件番号', '')}")
-                    c3.markdown(f"**類型:** {selected_row.get('類型', '')}")
-                    c4, c5, c6 = st.columns(3)
-                    c4.markdown(f"**氏名:** {selected_row.get('氏名', '')}")
-                    c5.markdown(f"**ｼﾒｲ:** {selected_row.get('ｼﾒｲ', '')}")
-                    c6.markdown(f"**生年月日:** {selected_row.get('生年月日', '')}")
-                    c7, c8, c9 = st.columns(3)
-                    c7.markdown(f"**障害類型:** {selected_row.get('障害類型', '')}")
-                    c8.markdown(f"**申立人:** {selected_row.get('申立人', '')}")
-                    c9.markdown(f"**審判確定日:** {selected_row.get('審判確定日', '')}")
-                    c10, c11, c12 = st.columns(3)
-                    c10.markdown(f"**管轄家裁:** {selected_row.get('管轄家裁', '')}")
-                # 入力・編集フォーム部分は変更なしのため省略せず記述
-                # --- 活動記録入力 ---
-                st.markdown("### 📝 活動記録の入力")
-                with st.container(border=True):
-                    with st.form("new_activity_form"):
-                        col_a, col_b = st.columns(2)
-                        input_date = col_a.date_input("記録日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
-                        activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
-                        input_activity = col_b.selectbox("活動", activity_opts)
-                        input_summary = st.text_area("要点・内容", height=100)
-                        
-                        if st.form_submit_button("登録"):
-                            new_id = 1
-                            if len(df_activities) > 0:
-                                try: new_id = pd.to_numeric(df_activities['activity_id']).max() + 1
-                                except: pass
-                            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            new_row = [int(new_id), int(current_person_id), str(input_date), input_activity, input_summary, now_str]
-                            add_data_to_sheet("Activities", new_row)
-                            st.rerun()
-
-                # --- 過去の活動履歴 (編集機能付き) ---
-                custom_header("過去の活動履歴", help_text="履歴をクリックすると、内容を修正できます。")
-                if 'edit_activity_id' not in st.session_state:
-                    st.session_state.edit_activity_id = None
-
-                try:
-                    df_activities['person_id'] = pd.to_numeric(df_activities['person_id'], errors='coerce')
-                    my_activities = df_activities[df_activities['person_id'] == int(current_person_id)].copy()
+            # --- 活動記録入力 ---
+            st.markdown("### 📝 活動記録の入力")
+            with st.container(border=True):
+                with st.form("new_activity_form"):
+                    col_a, col_b = st.columns(2)
+                    input_date = col_a.date_input("記録日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
+                    activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
+                    input_activity = col_b.selectbox("活動", activity_opts)
+                    input_summary = st.text_area("要点・内容", height=100)
                     
-                    if not my_activities.empty:
-                        my_activities = my_activities.sort_values('記録日', ascending=False)
-                        # 一覧表示
-                        selection_act = st.dataframe(
-                            my_activities[['activity_id', '記録日', '活動', '要点']],
-                            column_config={"activity_id": st.column_config.NumberColumn("活動ID", format="%d")},
-                            use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row"
-                        )
-                        if selection_act.selection.rows:
-                            act_idx = selection_act.selection.rows[0]
-                            act_row = my_activities.iloc[act_idx]
-                            st.session_state.edit_activity_id = act_row['activity_id']
-                            st.markdown(f"#### ✏️ 活動履歴の修正 (ID: {act_row['activity_id']})")
-                            with st.form("edit_activity_form"):
-                                ea_date_val = pd.to_datetime(act_row['記録日']).date() if act_row['記録日'] else None
-                                ea_date = st.date_input("記録日", value=ea_date_val, min_value=datetime.date(2000, 1, 1))
-                                act_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
-                                curr_act = act_row['活動'] if act_row['活動'] in act_opts else "その他"
-                                ea_act = st.selectbox("活動", act_opts, index=act_opts.index(curr_act))
-                                ea_summary = st.text_area("要点", value=act_row['要点'])
-                                if st.form_submit_button("修正内容を保存"):
-                                    upd_dict = {'記録日': str(ea_date), '活動': ea_act, '要点': ea_summary}
-                                    if update_sheet_data("Activities", "activity_id", st.session_state.edit_activity_id, upd_dict):
-                                        st.session_state.edit_activity_id = None
-                                        st.rerun()
-                                if st.form_submit_button("キャンセル"):
+                    if st.form_submit_button("登録"):
+                        new_id = 1
+                        if len(df_activities) > 0:
+                            try: new_id = pd.to_numeric(df_activities['activity_id']).max() + 1
+                            except: pass
+                        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        new_row = [int(new_id), int(current_person_id), str(input_date), input_activity, input_summary, now_str]
+                        add_data_to_sheet("Activities", new_row)
+                        st.rerun()
+
+            # --- 過去の活動履歴 (編集機能付き) ---
+            custom_header("過去の活動履歴", help_text="履歴をクリックすると、内容を修正できます。")
+            if 'edit_activity_id' not in st.session_state:
+                st.session_state.edit_activity_id = None
+
+            try:
+                df_activities['person_id'] = pd.to_numeric(df_activities['person_id'], errors='coerce')
+                my_activities = df_activities[df_activities['person_id'] == int(current_person_id)].copy()
+                
+                if not my_activities.empty:
+                    my_activities = my_activities.sort_values('記録日', ascending=False)
+                    # 一覧表示
+                    selection_act = st.dataframe(
+                        my_activities[['activity_id', '記録日', '活動', '要点']],
+                        column_config={"activity_id": st.column_config.NumberColumn("活動ID", format="%d")},
+                        use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row"
+                    )
+                    if selection_act.selection.rows:
+                        act_idx = selection_act.selection.rows[0]
+                        act_row = my_activities.iloc[act_idx]
+                        st.session_state.edit_activity_id = act_row['activity_id']
+                        st.markdown(f"#### ✏️ 活動履歴の修正 (ID: {act_row['activity_id']})")
+                        with st.form("edit_activity_form"):
+                            ea_date_val = pd.to_datetime(act_row['記録日']).date() if act_row['記録日'] else None
+                            ea_date = st.date_input("記録日", value=ea_date_val, min_value=datetime.date(2000, 1, 1))
+                            act_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
+                            curr_act = act_row['活動'] if act_row['活動'] in act_opts else "その他"
+                            ea_act = st.selectbox("活動", act_opts, index=act_opts.index(curr_act))
+                            ea_summary = st.text_area("要点", value=act_row['要点'])
+                            if st.form_submit_button("修正内容を保存"):
+                                upd_dict = {'記録日': str(ea_date), '活動': ea_act, '要点': ea_summary}
+                                if update_sheet_data("Activities", "activity_id", st.session_state.edit_activity_id, upd_dict):
                                     st.session_state.edit_activity_id = None
                                     st.rerun()
-                    else:
-                        st.write("まだ記録がありません。")
-                except Exception as e:
-                    st.write(f"読込エラー: {e}")
+                            if st.form_submit_button("キャンセル"):
+                                st.session_state.edit_activity_id = None
+                                st.rerun()
+                else:
+                    st.write("まだ記録がありません。")
+            except Exception as e:
+                st.write(f"読込エラー: {e}")
 
     # =========================================================
     # 2. 基本情報登録
@@ -515,28 +516,37 @@ def main():
         
         st.markdown("### 全利用者一覧")
         
-        # ★ここも選択ボタンリストに変更
-        if not df_persons.empty:
-            for idx, row in df_persons.iterrows():
-                label = f"{row.get('ケース番号', '')} 　 {row.get('氏名', '')} ({int(row['年齢']) if row['年齢'] else '-'}歳) 　 {row.get('現在の状態', '')}"
-                if st.button(label, key=f"sel_reg_{idx}", use_container_width=True):
-                    st.session_state.edit_person_id = row['person_id']
-                    st.rerun()
+        # ★修正: st.dataframe に戻して視認性を確保
+        reg_list_cols = ['ケース番号', '氏名', '生年月日', '年齢', '現在の状態']
+        available_reg_cols = [c for c in reg_list_cols if c in df_persons.columns]
+        df_display_reg = df_persons[available_reg_cols] if not df_persons.empty and len(available_reg_cols) > 0 else pd.DataFrame(columns=reg_list_cols)
+        
+        selection_reg = st.dataframe(
+            df_display_reg,
+            column_config={
+                "ケース番号": st.column_config.TextColumn("No."),
+                "年齢": st.column_config.NumberColumn("年齢", format="%d歳"),
+            },
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            hide_index=True,
+            height=200
+        )
         
         selected_data = {}
         is_edit_mode = False
         
-        if st.session_state.edit_person_id:
-            # IDから行を特定
-            rows = df_persons[df_persons['person_id'] == st.session_state.edit_person_id]
-            if not rows.empty:
-                full_row = rows.iloc[0]
-                selected_data = full_row.to_dict()
-                is_edit_mode = True
-                st.markdown(f"### ✏️ 編集モード: {selected_data.get('氏名', '')} さんの情報を修正中")
-                if st.button("選択を解除（新規登録へ戻る）"):
-                    st.session_state.edit_person_id = None
-                    st.rerun()
+        if selection_reg.selection.rows:
+            idx = selection_reg.selection.rows[0]
+            full_row = df_persons.iloc[idx]
+            st.session_state.edit_person_id = full_row['person_id']
+            selected_data = full_row.to_dict()
+            is_edit_mode = True
+            st.markdown(f"### ✏️ 編集モード: {selected_data.get('氏名', '')} さんの情報を修正中")
+            if st.button("選択を解除（新規登録へ戻る）"):
+                st.session_state.edit_person_id = None
+                st.rerun()
         else:
             st.markdown("### ✨ 新規登録モード")
 
