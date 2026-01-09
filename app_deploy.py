@@ -63,6 +63,8 @@ st.markdown("""
         background-color: #f8f9fa;
         padding: 5px;
     }
+    
+    /* 見出しスタイル（通常） */
     .custom-header {
         font-size: 18px !important;
         font-weight: bold !important;
@@ -72,12 +74,32 @@ st.markdown("""
         border-bottom: 1px solid #ccc;
         padding-bottom: 5px;
     }
+
+    /* 見出しスタイル（ボタン横並び用・下線なし） */
+    .custom-header-text {
+        font-size: 18px !important;
+        font-weight: bold !important;
+        color: #006633 !important;
+        margin-top: 10px; /* ボタンとの高さ合わせ */
+        margin-bottom: 0px;
+    }
+    /* 分離した下線 */
+    .custom-header-line {
+        border-bottom: 1px solid #ccc;
+        margin-top: 5px;
+        margin-bottom: 10px;
+    }
     
     /* 入力フォームのデザイン調整（角を丸く） */
     .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea {
         border: 1px solid #666 !important;
         background-color: #ffffff !important;
         border-radius: 8px !important; /* 角丸設定 */
+    }
+    
+    /* ヘルプボタンの位置調整 */
+    div[data-testid="stPopover"] {
+        margin-top: 5px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -288,8 +310,20 @@ def import_csv_to_sheet_safe(sheet_name, df_upload, target_columns, id_column, d
 def custom_title(text):
     st.markdown(f'<div class="custom-title">{text}</div>', unsafe_allow_html=True)
 
-def custom_header(text):
-    st.markdown(f'<div class="custom-header">{text}</div>', unsafe_allow_html=True)
+# --- カスタムヘッダー関数（ヘルプボタン対応版） ---
+def custom_header(text, help_text=None):
+    if help_text:
+        # タイトルとヘルプボタンを横並びにする
+        col1, col2 = st.columns([0.9, 0.1])
+        with col1:
+            st.markdown(f'<div class="custom-header-text">{text}</div>', unsafe_allow_html=True)
+        with col2:
+            with st.popover("?"):
+                st.info(help_text)
+        # 下線
+        st.markdown('<div class="custom-header-line"></div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="custom-header">{text}</div>', unsafe_allow_html=True)
 
 # --- メイン処理 ---
 def main():
@@ -316,7 +350,7 @@ def main():
     # 1. 利用者一覧・活動記録
     # =========================================================
     if menu == "利用者一覧・活動記録":
-        custom_header("受任中利用者一覧")
+        custom_header("受任中利用者一覧", help_text="一覧から利用者をクリックすると、詳細画面や活動記録の入力フォームが開きます。")
         
         # フィルタリング (受任中 or 空欄)
         if not df_persons.empty and '現在の状態' in df_persons.columns:
@@ -354,7 +388,7 @@ def main():
             age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val) and age_val != "") else ""
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
-            # 詳細表示（行間を詰めた表示）
+            # 詳細表示
             with st.expander("▼ 基本情報を全て表示", expanded=True):
                 c1, c2, c3 = st.columns(3)
                 c1.markdown(f"**No. (ケース番号):** {selected_row.get('ケース番号', '')}")
@@ -378,8 +412,11 @@ def main():
             with st.container(border=True):
                 with st.form("new_activity_form"):
                     col_a, col_b = st.columns(2)
-                    input_date = col_a.date_input("記録日", datetime.date.today())
-                    # 手段 -> 活動 (選択肢変更)
+                    
+                    # カレンダーの範囲指定 (2000年〜)
+                    input_date = col_a.date_input("記録日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
+                    
+                    # 手段 -> 活動
                     activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
                     input_activity = col_b.selectbox("活動", activity_opts)
                     
@@ -396,7 +433,7 @@ def main():
                         st.rerun()
 
             # --- 過去の活動履歴 (編集機能付き) ---
-            custom_header("過去の活動履歴")
+            custom_header("過去の活動履歴", help_text="履歴をクリックすると、内容を修正できます。")
             
             if 'edit_activity_id' not in st.session_state:
                 st.session_state.edit_activity_id = None
@@ -408,8 +445,7 @@ def main():
                 if not my_activities.empty:
                     my_activities = my_activities.sort_values('記録日', ascending=False)
                     
-                    # 一覧表示（activity_id -> 活動ID に変更）
-                    st.info("編集したい履歴をクリックしてください。")
+                    # 一覧表示
                     selection_act = st.dataframe(
                         my_activities[['activity_id', '記録日', '活動', '要点']],
                         column_config={
@@ -430,7 +466,9 @@ def main():
                         st.markdown(f"#### ✏️ 活動履歴の修正 (ID: {act_row['activity_id']})")
                         with st.form("edit_activity_form"):
                             ea_date_val = pd.to_datetime(act_row['記録日']).date() if act_row['記録日'] else None
-                            ea_date = st.date_input("記録日", value=ea_date_val)
+                            
+                            # カレンダーの範囲指定 (2000年〜)
+                            ea_date = st.date_input("記録日", value=ea_date_val, min_value=datetime.date(2000, 1, 1))
                             
                             act_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
                             curr_act = act_row['活動'] if act_row['活動'] in act_opts else "その他"
@@ -460,7 +498,7 @@ def main():
     # 2. 基本情報登録
     # =========================================================
     elif menu == "基本情報登録":
-        custom_header("基本情報登録")
+        custom_header("基本情報登録", help_text="新規登録の場合はフォームに入力してください。\n修正の場合は、下の一覧から対象者をクリックしてください。")
         
         if 'edit_person_id' not in st.session_state:
             st.session_state.edit_person_id = None
@@ -528,11 +566,17 @@ def main():
             in_basic_no = col2.text_input("基本事件番号", value=val_basic_no)
             in_name = col1.text_input("氏名 (必須)", value=val_name)
             in_kana = col2.text_input("ｼﾒｲ (カナ)", value=val_kana)
-            in_dob = col1.date_input("生年月日", value=val_dob)
+            
+            # カレンダーの範囲指定 (1900年〜)
+            in_dob = col1.date_input("生年月日", value=val_dob, min_value=datetime.date(1900, 1, 1))
+            
             in_type = col2.selectbox("類型", type_options, index=val_type_index)
             in_disability = col1.text_input("障害類型", value=val_disability)
             in_petitioner = col2.text_input("申立人", value=val_petitioner)
-            in_ref_date = col1.date_input("審判確定日", value=val_ref_date)
+            
+            # カレンダーの範囲指定 (2000年〜)
+            in_ref_date = col1.date_input("審判確定日", value=val_ref_date, min_value=datetime.date(2000, 1, 1))
+            
             in_court = col2.text_input("管轄家裁", value=val_court)
             in_report_month = col1.text_input("家裁報告月", value=val_report_month)
             in_status = col2.selectbox("現在の状態", status_options, index=val_status_index)
@@ -571,7 +615,7 @@ def main():
     # 3. データ管理・移行
     # =========================================================
     elif menu == "データ管理・移行":
-        custom_header("データ一括インポート・エクスポート")
+        custom_header("データ一括インポート・エクスポート", help_text="指定のCSV様式を使って、データの一括登録やバックアップができます。")
         st.markdown("データのバックアップ（エクスポート）や、CSVファイルによる一括取り込みができます。")
 
         tab1, tab2 = st.tabs(["1. 利用者データ (Persons)", "2. 活動記録データ (Activities)"])
@@ -591,7 +635,7 @@ def main():
             st.markdown("#### 📥 データインポート")
             st.markdown("※ すでに登録済みのIDはスキップされ、新しい行だけが追加されます。")
             
-            # 様式DL（エクスポートと同じだが、空の枠が欲しい人向け）
+            # 様式DL
             df_template_p = pd.DataFrame(columns=COL_DEF_PERSONS)
             csv_template_p = df_template_p.to_csv(index=False).encode('cp932')
             st.download_button("空の様式をダウンロード (Persons_Template.csv)", csv_template_p, "Persons_Template.csv", "text/csv")
