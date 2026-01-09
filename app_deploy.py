@@ -45,6 +45,12 @@ st.markdown("""
         padding-bottom: 4px !important;
         font-size: 14px !important;
     }
+    
+    /* 基本情報の表示行間を狭くする */
+    div[data-testid="stExpander"] .stMarkdown p {
+        margin-bottom: 2px !important;
+    }
+    
     /* タイトルスタイル */
     .custom-title {
         font-size: 22px !important;
@@ -66,10 +72,12 @@ st.markdown("""
         border-bottom: 1px solid #ccc;
         padding-bottom: 5px;
     }
-    /* 入力フォーム枠線 */
-    .stTextInput > div > div > input {
+    
+    /* 入力フォームのデザイン調整（角を丸く） */
+    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea {
         border: 1px solid #666 !important;
         background-color: #ffffff !important;
+        border-radius: 8px !important; /* 角丸設定 */
     }
     </style>
 """, unsafe_allow_html=True)
@@ -326,7 +334,7 @@ def main():
         selection = st.dataframe(
             df_display, 
             column_config={
-                "ケース番号": st.column_config.TextColumn("No."), # 幅節約のため名称変更
+                "ケース番号": st.column_config.TextColumn("No."),
                 "年齢": st.column_config.NumberColumn("年齢", format="%d歳"),
                 "類型": st.column_config.TextColumn("後見類型"),
             },
@@ -346,6 +354,7 @@ def main():
             age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val) and age_val != "") else ""
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
+            # 詳細表示（行間を詰めた表示）
             with st.expander("▼ 基本情報を全て表示", expanded=True):
                 c1, c2, c3 = st.columns(3)
                 c1.markdown(f"**No. (ケース番号):** {selected_row.get('ケース番号', '')}")
@@ -375,15 +384,13 @@ def main():
                     input_activity = col_b.selectbox("活動", activity_opts)
                     
                     input_summary = st.text_area("要点・内容", height=100)
-                    # 次回予定日は削除
                     
-                    if st.form_submit_button("登録"): # ボタン名変更
+                    if st.form_submit_button("登録"):
                         new_id = 1
                         if len(df_activities) > 0:
                             try: new_id = pd.to_numeric(df_activities['activity_id']).max() + 1
                             except: pass
                         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        # activity_id, person_id, 記録日, 活動, 要点, 作成日時
                         new_row = [int(new_id), int(current_person_id), str(input_date), input_activity, input_summary, now_str]
                         add_data_to_sheet("Activities", new_row)
                         st.rerun()
@@ -391,7 +398,6 @@ def main():
             # --- 過去の活動履歴 (編集機能付き) ---
             custom_header("過去の活動履歴")
             
-            # ステート管理: 編集モードかどうか
             if 'edit_activity_id' not in st.session_state:
                 st.session_state.edit_activity_id = None
 
@@ -402,10 +408,13 @@ def main():
                 if not my_activities.empty:
                     my_activities = my_activities.sort_values('記録日', ascending=False)
                     
-                    # 一覧表示
+                    # 一覧表示（activity_id -> 活動ID に変更）
                     st.info("編集したい履歴をクリックしてください。")
                     selection_act = st.dataframe(
                         my_activities[['activity_id', '記録日', '活動', '要点']],
+                        column_config={
+                            "activity_id": st.column_config.NumberColumn("活動ID", format="%d"),
+                        },
                         use_container_width=True,
                         hide_index=True,
                         on_select="rerun",
@@ -493,7 +502,6 @@ def main():
             st.session_state.edit_person_id = None
 
         with st.form("person_info_form"):
-            # フォーム内容は前回と同じ（省略せずに記述）
             col1, col2 = st.columns(2)
             val_case_no = selected_data.get('ケース番号', '')
             val_basic_no = selected_data.get('基本事件番号', '')
