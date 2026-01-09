@@ -103,7 +103,7 @@ st.markdown("""
         margin-top: 5px;
     }
 
-    /* --- ファイルアップローダーの日本語化ハック --- */
+    /* --- ファイルアップローダーの日本語化ハック (修正版) --- */
     /* 元のテキストを非表示にする */
     [data-testid="stFileUploaderDropzone"] div div span {
         display: none;
@@ -113,12 +113,12 @@ st.markdown("""
     }
     /* 日本語の案内を表示する */
     [data-testid="stFileUploaderDropzone"] div div::after {
-        content: "ここにファイルをドラッグ＆ドロップ、またはクリックしてファイルを選択";
-        font-size: 16px;
+        content: "ファイルをドラッグ＆ドロップまたは選択";
+        font-size: 12px;
         font-weight: bold;
         color: #333;
         display: block;
-        margin: 10px 0;
+        margin: 5px 0;
     }
     /* 制限事項の表示 */
     [data-testid="stFileUploaderDropzone"] div div::before {
@@ -126,6 +126,7 @@ st.markdown("""
         font-size: 12px;
         color: #666;
         display: block;
+        margin-bottom: 5px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -395,7 +396,13 @@ def main():
         display_columns = ['ケース番号', '氏名', '生年月日', '年齢', '類型']
         available_cols = [c for c in display_columns if c in df_active.columns]
         
-        df_display = df_active[available_cols] if not df_active.empty and len(available_cols) > 0 else pd.DataFrame(columns=display_columns)
+        if not df_active.empty and len(available_cols) > 0:
+            df_display = df_active[available_cols]
+            # ★修正点: 年齢を数値型に変換して確実に表示させる
+            if '年齢' in df_display.columns:
+                df_display['年齢'] = pd.to_numeric(df_display['年齢'], errors='coerce')
+        else:
+            df_display = pd.DataFrame(columns=display_columns)
 
         # ★修正: st.dataframe に戻して視認性を確保
         selection = st.dataframe(
@@ -521,6 +528,10 @@ def main():
         available_reg_cols = [c for c in reg_list_cols if c in df_persons.columns]
         df_display_reg = df_persons[available_reg_cols] if not df_persons.empty and len(available_reg_cols) > 0 else pd.DataFrame(columns=reg_list_cols)
         
+        # ★修正点: 年齢を数値型に変換して確実に表示させる
+        if not df_display_reg.empty and '年齢' in df_display_reg.columns:
+            df_display_reg['年齢'] = pd.to_numeric(df_display_reg['年齢'], errors='coerce')
+
         selection_reg = st.dataframe(
             df_display_reg,
             column_config={
