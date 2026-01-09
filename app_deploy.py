@@ -4,7 +4,7 @@ import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import io
-import re # 正規表現を使うために追加
+import re
 
 # --- 設定・定数 ---
 SPREADSHEET_NAME = '成年後見システム台帳'
@@ -23,7 +23,8 @@ COL_DEF_PERSONS = [
     '申立人',
     '審判確定日',
     '管轄家裁',
-    '家裁報告月'
+    '家裁報告月',
+    '現在の状態'
 ]
 
 COL_DEF_ACTIVITIES = ['activity_id', 'person_id', '記録日', '手段', '要点', '次回予定日', '作成日時']
@@ -117,64 +118,44 @@ def get_spreadsheet_connection():
 
 # --- 日付正規化・和暦対応ロジック ---
 def normalize_date_str(date_val):
-    """
-    あらゆる形式の日付文字列を YYYY-MM-DD 形式に変換する
-    和暦(S50.1.1, 昭和50年1月1日)やスラッシュ区切り等に対応
-    """
     if date_val is None:
         return ""
     text = str(date_val).strip()
     if not text or text.lower() == "nan":
         return ""
-
-    # 全角数字を半角に
     text = text.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
-
-    # 和暦対応
-    # パターン: 元号(アルファベットor漢字) + 年 + 区切り + 月 + 区切り + 日
-    # 区切りは . / - 年 月 日 など
     eras = {'明治': 1868, '大正': 1912, '昭和': 1926, '平成': 1989, '令和': 2019,
             'M': 1868, 'T': 1912, 'S': 1926, 'H': 1989, 'R': 2019}
-    
-    # 正規表現で元号と数値を抽出
     match = re.match(r'([明治大正昭和平成令和MTSHR])\s*(\d+)\D+(\d+)\D+(\d+)', text, re.IGNORECASE)
     if match:
         era_str, year_str, month_str, day_str = match.groups()
-        era_str = era_str.upper() # 小文字対策
-        
-        # 漢字の元号に対応するキーを探す
+        era_str = era_str.upper()
         base_year = 1900
         for k, v in eras.items():
             if k == era_str:
                 base_year = v
                 break
-        
         year = int(year_str)
-        # 元年は1年として計算
         if year == 1:
             west_year = base_year
         else:
             west_year = base_year + year - 1
-            
         return f"{west_year}-{int(month_str):02d}-{int(day_str):02d}"
-
-    # 通常のpandas変換を試みる
     try:
         dt = pd.to_datetime(text, errors='coerce')
         if pd.isna(dt):
-            return text # 変換できなければそのまま返す
+            return text
         return dt.strftime('%Y-%m-%d')
     except:
         return text
 
 def calculate_age(born):
-    """正規化された日付文字列から年齢を計算"""
     if not born:
         return ""
     try:
         born_date = pd.to_datetime(born, errors='coerce')
         if pd.isna(born_date):
-            return "" # 変換不可
+            return ""
         born_date = born_date.date()
         today = datetime.date.today()
         age = today.year - born_date.year - ((today.month, today.day) < (born_date.month, born_date.day))
@@ -183,7 +164,6 @@ def calculate_age(born):
         return ""
 
 def load_data_from_sheet(sheet):
-    """データを読み込み、不足しているカラムがあれば補完する"""
     try:
         ws_persons = sheet.worksheet("Persons")
     except:
@@ -209,7 +189,6 @@ def load_data_from_sheet(sheet):
         if col not in df_activities.columns:
             df_activities[col] = ""
 
-    # ★読み込み時に日付を正規化しておく（表示崩れ防止）
     date_cols_p = ['生年月日', '審判確定日']
     for col in date_cols_p:
         if col in df_persons.columns:
@@ -227,34 +206,70 @@ def add_data_to_sheet(sheet_name, new_row_list):
     worksheet = sheet.worksheet(sheet_name)
     worksheet.append_row(new_row_list)
 
-def update_person_data(person_id, update_dict, df_current):
+def update_person_data(person_id, update_dict):
+    """
+    利用者情報を更新する関数（修正版）
+    行ズレを防ぐため、スプレッドシート上のIDを直接検索して更新します。
+    """
     sheet = get_spreadsheet_connection()
+    if isinstance(sheet, str):
+        st.error(f"接続エラー: {sheet}")
+        return False
+        
     worksheet = sheet.worksheet("Persons")
+    
+    # ヘッダー行を取得して列の位置を把握
+    header_cells = worksheet.row_values(1)
+    
+    # person_id 列がどこにあるか探す
     try:
-        df_current['person_id'] = pd.to_numeric(df_current['person_id'], errors='coerce')
-        target_indices = df_current[df_current['person_id'] == int(person_id)].index
-        if len(target_indices) == 0:
-            st.error("更新対象のIDが見つかりませんでした。")
-            return False
-        target_index = target_indices[0]
-        row_num = target_index + 2
-        header_cells = worksheet.row_values(1)
+        pid_col_index = header_cells.index('person_id') + 1
+    except ValueError:
+        st.error("システムエラー: person_id 列が見つかりません。")
+        return False
+    
+    # person_id 列の値を全て取得して、更新対象の行番号を探す
+    # (APIコール節約のため col_values を使用)
+    all_ids = worksheet.col_values(pid_col_index)
+    
+    target_row_num = -1
+    str_search_id = str(person_id)
+    
+    # リストの中からIDが一致する行を探す
+    for i, val in enumerate(all_ids):
+        if str(val) == str_search_id:
+            target_row_num = i + 1 # リストは0始まり、行番号は1始まり
+            break
+            
+    if target_row_num == -1:
+        st.error(f"更新対象のID ({person_id}) が見つかりませんでした。")
+        return False
+        
+    # 更新実行
+    try:
+        # 安全のため、複数のセルをまとめて更新する
+        cells_to_update = []
         for col_name, value in update_dict.items():
             if col_name in header_cells:
                 col_num = header_cells.index(col_name) + 1
-                worksheet.update_cell(row_num, col_num, value)
-        st.toast("情報を更新しました", icon="✅")
-        return True
+                # 値をセット（全て文字列として扱う）
+                cells_to_update.append(gspread.Cell(target_row_num, col_num, str(value)))
+        
+        if cells_to_update:
+            worksheet.update_cells(cells_to_update)
+            st.toast("情報を更新しました", icon="✅")
+            return True
+        else:
+            return False
+            
     except Exception as e:
         st.error(f"更新エラー: {str(e)}")
         return False
 
 def import_csv_to_sheet(sheet_name, df_upload, target_columns, date_columns=[]):
-    """CSVデータをスプレッドシートに一括追加（日付正規化機能付き）"""
     sheet = get_spreadsheet_connection()
     worksheet = sheet.worksheet(sheet_name)
     export_data = []
-    
     for index, row in df_upload.iterrows():
         new_row = []
         for col in target_columns:
@@ -262,14 +277,12 @@ def import_csv_to_sheet(sheet_name, df_upload, target_columns, date_columns=[]):
             if col in row:
                 raw_val = row[col]
                 if not pd.isna(raw_val):
-                    # 日付カラムなら正規化する
                     if col in date_columns:
                         val = normalize_date_str(raw_val)
                     else:
                         val = str(raw_val)
             new_row.append(val)
         export_data.append(new_row)
-    
     if export_data:
         worksheet.append_rows(export_data)
         return len(export_data)
@@ -280,14 +293,6 @@ def custom_title(text):
 
 def custom_header(text):
     st.markdown(f'<div class="custom-header">{text}</div>', unsafe_allow_html=True)
-
-def rename_columns_for_display(df):
-    rename_map = {
-        'person_id': '利用者ID',
-        'activity_id': '記録ID',
-        'created_at': '作成日時'
-    }
-    return df.rename(columns=rename_map)
 
 # --- メイン処理 ---
 def main():
@@ -303,7 +308,7 @@ def main():
 
     df_persons, df_activities = load_data_from_sheet(sheet_connection)
 
-    # 年齢カラムの追加計算
+    # 年齢計算
     if '生年月日' in df_persons.columns:
         if not df_persons.empty:
             df_persons['年齢'] = df_persons['生年月日'].apply(calculate_age)
@@ -312,23 +317,31 @@ def main():
 
     menu = st.sidebar.radio("メニュー", ["利用者一覧・活動記録", "基本情報登録", "データ管理・移行"])
 
-    # --- 画面1: 利用者一覧・活動記録 ---
+    # --- 画面1: 利用者一覧・活動記録 (受任中のみ表示) ---
     if menu == "利用者一覧・活動記録":
-        custom_header("利用者一覧")
+        custom_header("受任中利用者一覧")
         
-        display_columns = ['氏名', '生年月日', '年齢']
-        available_cols = [c for c in display_columns if c in df_persons.columns]
+        # フィルタリング: 現在の状態が「受任中」または「空欄」
+        if not df_persons.empty and '現在の状態' in df_persons.columns:
+            mask = df_persons['現在の状態'].fillna('').astype(str).isin(['受任中', '', 'nan'])
+            df_active = df_persons[mask].copy()
+        else:
+            df_active = df_persons.copy()
+
+        # 表示カラム: ケース番号, 氏名, 生年月日, 年齢, 後見類型
+        display_columns = ['ケース番号', '氏名', '生年月日', '年齢', '類型']
+        available_cols = [c for c in display_columns if c in df_active.columns]
         
-        if not df_persons.empty and len(available_cols) > 0:
-            df_display = df_persons[available_cols]
+        if not df_active.empty and len(available_cols) > 0:
+            df_display = df_active[available_cols]
         else:
             df_display = pd.DataFrame(columns=display_columns)
 
-        # 一覧表示（生年月日は正規化されているのでシンプルに表示）
         selection = st.dataframe(
             df_display, 
             column_config={
                 "年齢": st.column_config.NumberColumn("年齢", format="%d歳"),
+                "類型": st.column_config.TextColumn("後見類型"),
             },
             use_container_width=False,
             on_select="rerun", 
@@ -338,7 +351,7 @@ def main():
         
         if selection.selection.rows:
             selected_row_index = selection.selection.rows[0]
-            selected_row = df_persons.iloc[selected_row_index]
+            selected_row = df_active.iloc[selected_row_index]
             current_person_id = selected_row['person_id']
             
             st.markdown("---")
@@ -363,9 +376,10 @@ def main():
                 c8.markdown(f"**申立人:** {selected_row.get('申立人', '')}")
                 c9.markdown(f"**審判確定日:** {selected_row.get('審判確定日', '')}")
 
-                c10, c11 = st.columns(2)
+                c10, c11, c12 = st.columns(3)
                 c10.markdown(f"**管轄家裁:** {selected_row.get('管轄家裁', '')}")
                 c11.markdown(f"**家裁報告月:** {selected_row.get('家裁報告月', '')}")
+                c12.markdown(f"**現在の状態:** {selected_row.get('現在の状態', '')}")
 
             st.markdown("### 📝 活動記録の入力")
             with st.container(border=True):
@@ -404,12 +418,12 @@ def main():
     elif menu == "基本情報登録":
         custom_header("基本情報登録")
         
-        st.info("新規登録の場合は下のフォームに入力してください。修正する場合は、下の一覧から対象者をクリックしてください。")
-        
         if 'edit_person_id' not in st.session_state:
             st.session_state.edit_person_id = None
         
-        reg_list_cols = ['person_id', '氏名', '生年月日', '年齢']
+        st.markdown("### 全利用者一覧")
+        
+        reg_list_cols = ['ケース番号', '氏名', '生年月日', '年齢', '現在の状態']
         available_reg_cols = [c for c in reg_list_cols if c in df_persons.columns]
         
         if not df_persons.empty and len(available_reg_cols) > 0:
@@ -464,6 +478,12 @@ def main():
             val_court = selected_data.get('管轄家裁', '')
             val_report_month = selected_data.get('家裁報告月', '')
             
+            status_options = ["受任中", "終了"]
+            val_status_raw = selected_data.get('現在の状態', '受任中')
+            val_status_index = 0
+            if val_status_raw in status_options:
+                val_status_index = status_options.index(val_status_raw)
+            
             val_dob = None
             if selected_data.get('生年月日'):
                 try: val_dob = pd.to_datetime(selected_data.get('生年月日')).date()
@@ -488,7 +508,9 @@ def main():
             
             in_ref_date = col1.date_input("審判確定日", value=val_ref_date if val_ref_date else None)
             in_court = col2.text_input("管轄家裁", value=val_court)
+            
             in_report_month = col1.text_input("家裁報告月", value=val_report_month)
+            in_status = col2.selectbox("現在の状態", status_options, index=val_status_index)
 
             submit_btn_text = "情報を更新する" if is_edit_mode else "新規登録する"
             submitted = st.form_submit_button(submit_btn_text)
@@ -508,13 +530,13 @@ def main():
                         '申立人': in_petitioner,
                         '審判確定日': str(in_ref_date) if in_ref_date else "",
                         '管轄家裁': in_court,
-                        '家裁報告月': in_report_month
+                        '家裁報告月': in_report_month,
+                        '現在の状態': in_status
                     }
 
                     if is_edit_mode:
                         target_id = st.session_state.edit_person_id
-                        if update_person_data(target_id, update_data, df_persons):
-                            st.success(f"{in_name} さんの情報を更新しました。")
+                        if update_person_data(target_id, update_data):
                             st.session_state.edit_person_id = None
                             st.rerun()
                     else:
@@ -529,7 +551,7 @@ def main():
                             str(in_dob) if in_dob else "",
                             in_type, in_disability, in_petitioner,
                             str(in_ref_date) if in_ref_date else "",
-                            in_court, in_report_month
+                            in_court, in_report_month, in_status
                         ]
                         add_data_to_sheet("Persons", new_row)
                         st.success(f"{in_name} さんを新規登録しました。")
@@ -558,7 +580,6 @@ def main():
                     
                     st.write(df_upload_p.head())
                     if st.button("取り込み (Persons)", key="btn_imp_p"):
-                        # 日付正規化を適用したいカラムを指定
                         date_columns = ['生年月日', '審判確定日']
                         count = import_csv_to_sheet("Persons", df_upload_p, COL_DEF_PERSONS, date_columns)
                         st.success(f"{count} 件取り込み完了")
