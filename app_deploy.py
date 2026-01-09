@@ -213,7 +213,7 @@ def calculate_age(born):
         if pd.isna(born_date): return None
         born_date = born_date.date()
         today = datetime.date.today()
-        # ★修正: born.month ではなく born_date.month を使う
+        # 修正: born.month ではなく born_date.month を使う
         return today.year - born_date.year - ((today.month, today.day) < (born_date.month, born_date.day))
     except:
         return None
@@ -372,7 +372,7 @@ def main():
     if '生年月日' in df_persons.columns:
         if not df_persons.empty:
             df_persons['年齢'] = df_persons['生年月日'].apply(calculate_age)
-            # ★修正: ここで数値型に変換しておく
+            # 修正: ここで数値型に変換しておく
             df_persons['年齢'] = pd.to_numeric(df_persons['年齢'], errors='coerce')
         else:
             df_persons['年齢'] = None
@@ -402,7 +402,7 @@ def main():
         
         df_display = df_active[available_cols] if not df_active.empty and len(available_cols) > 0 else pd.DataFrame(columns=display_columns)
 
-        # ★修正: 数値型であることを保証
+        # 修正: 数値型であることを保証
         if '年齢' in df_display.columns:
             df_display['年齢'] = pd.to_numeric(df_display['年齢'], errors='coerce')
 
@@ -431,7 +431,8 @@ def main():
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
             # 詳細表示
-            with st.expander("▼ 基本情報を全て表示", expanded=True):
+            # ★修正: デフォルトで閉じ、ラベルを変更
+            with st.expander("▼ 基本情報", expanded=False):
                 c1, c2, c3 = st.columns(3)
                 c1.markdown(f"**No. (ケース番号):** {selected_row.get('ケース番号', '')}")
                 c2.markdown(f"**基本事件番号:** {selected_row.get('基本事件番号', '')}")
@@ -454,7 +455,10 @@ def main():
             with st.container(border=True):
                 with st.form("new_activity_form"):
                     col_a, col_b = st.columns(2)
-                    input_date = col_a.date_input("記録日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
+                    
+                    # ★修正: ラベルを「記録日」→「活動日」に変更
+                    input_date = col_a.date_input("活動日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
+                    
                     activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
                     input_activity = col_b.selectbox("活動", activity_opts)
                     input_summary = st.text_area("要点・内容", height=100)
@@ -469,8 +473,8 @@ def main():
                         add_data_to_sheet("Activities", new_row)
                         st.rerun()
 
-            # --- 過去の活動履歴 (編集機能付き) ---
-            custom_header("過去の活動履歴", help_text="履歴をクリックすると、内容を修正できます。")
+            # --- 過去の活動履歴 (編集機能付き・カード表示版) ---
+            custom_header("過去の活動履歴", help_text="履歴の「編集」ボタンを押すと、内容を修正できます。")
             if 'edit_activity_id' not in st.session_state:
                 st.session_state.edit_activity_id = None
 
@@ -480,31 +484,52 @@ def main():
                 
                 if not my_activities.empty:
                     my_activities = my_activities.sort_values('記録日', ascending=False)
-                    selection_act = st.dataframe(
-                        my_activities[['activity_id', '記録日', '活動', '要点']],
-                        column_config={"activity_id": st.column_config.NumberColumn("活動ID", format="%d")},
-                        use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row"
-                    )
-                    if selection_act.selection.rows:
-                        act_idx = selection_act.selection.rows[0]
-                        act_row = my_activities.iloc[act_idx]
-                        st.session_state.edit_activity_id = act_row['activity_id']
-                        st.markdown(f"#### ✏️ 活動履歴の修正 (ID: {act_row['activity_id']})")
-                        with st.form("edit_activity_form"):
-                            ea_date_val = pd.to_datetime(act_row['記録日']).date() if act_row['記録日'] else None
-                            ea_date = st.date_input("記録日", value=ea_date_val, min_value=datetime.date(2000, 1, 1))
-                            act_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
-                            curr_act = act_row['活動'] if act_row['活動'] in act_opts else "その他"
-                            ea_act = st.selectbox("活動", act_opts, index=act_opts.index(curr_act))
-                            ea_summary = st.text_area("要点", value=act_row['要点'])
-                            if st.form_submit_button("修正内容を保存"):
-                                upd_dict = {'記録日': str(ea_date), '活動': ea_act, '要点': ea_summary}
-                                if update_sheet_data("Activities", "activity_id", st.session_state.edit_activity_id, upd_dict):
-                                    st.session_state.edit_activity_id = None
+                    
+                    # ★編集フォーム (選択された場合のみ表示)
+                    if st.session_state.edit_activity_id:
+                        # 該当データを取得
+                        edit_row = my_activities[my_activities['activity_id'] == st.session_state.edit_activity_id].iloc[0]
+                        
+                        with st.container(border=True):
+                            st.markdown(f"#### ✏️ 活動履歴の修正 (ID: {edit_row['activity_id']})")
+                            with st.form("edit_activity_form"):
+                                ea_date_val = pd.to_datetime(edit_row['記録日']).date() if edit_row['記録日'] else None
+                                ea_date = st.date_input("活動日", value=ea_date_val, min_value=datetime.date(2000, 1, 1))
+                                
+                                act_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
+                                curr_act = edit_row['活動'] if edit_row['活動'] in act_opts else "その他"
+                                ea_act = st.selectbox("活動", act_opts, index=act_opts.index(curr_act))
+                                
+                                ea_summary = st.text_area("要点・内容", value=edit_row['要点'], height=150)
+                                
+                                c_save, c_cancel = st.columns(2)
+                                with c_save:
+                                    if st.form_submit_button("修正内容を保存"):
+                                        upd_dict = {'記録日': str(ea_date), '活動': ea_act, '要点': ea_summary}
+                                        if update_sheet_data("Activities", "activity_id", st.session_state.edit_activity_id, upd_dict):
+                                            st.session_state.edit_activity_id = None
+                                            st.rerun()
+                                with c_cancel:
+                                    if st.form_submit_button("キャンセル"):
+                                        st.session_state.edit_activity_id = None
+                                        st.rerun()
+
+                    # ★一覧表示 (カード形式)
+                    for idx, row in my_activities.iterrows():
+                        with st.container(border=True):
+                            # ヘッダー部分
+                            c1, c2, c3 = st.columns([2, 3, 1])
+                            with c1:
+                                st.write(f"📅 **{row['記録日']}**")
+                            with c2:
+                                st.write(f"📝 **{row['活動']}**")
+                            with c3:
+                                if st.button("編集", key=f"btn_edit_{row['activity_id']}"):
+                                    st.session_state.edit_activity_id = row['activity_id']
                                     st.rerun()
-                            if st.form_submit_button("キャンセル"):
-                                st.session_state.edit_activity_id = None
-                                st.rerun()
+                            
+                            # 内容部分 (自動折り返し)
+                            st.write(row['要点'])
                 else:
                     st.write("まだ記録がありません。")
             except Exception as e:
