@@ -47,11 +47,21 @@ st.markdown("""
         padding-left: 1rem !important;
         padding-right: 1rem !important;
     }
+    
+    /* 垂直方向の隙間をゼロにする（履歴間の幅をなくすため） */
     div[data-testid="stVerticalBlock"] {
-        gap: 0.5rem !important;
+        gap: 0rem !important;
     }
+    
     div[data-testid="stElementContainer"] {
-        margin-bottom: 0.2rem !important;
+        margin-bottom: 0.1rem !important;
+    }
+
+    /* 枠線付きコンテナ（カード）のマージン調整 */
+    div[data-testid="stBorder"] {
+        margin-bottom: 0px !important;
+        margin-top: 0px !important;
+        border-bottom: none !important; /* 下線を消して連結させる場合は有効化 */
     }
 
     /* テーブルスタイル */
@@ -486,7 +496,9 @@ def main():
                     input_date = col_a.date_input("活動日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
                     activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
                     input_activity = col_b.selectbox("活動", activity_opts)
-                    input_summary = st.text_area("要点・内容", height=80)
+                    
+                    # 修正: ラベルを「内容」に変更、高さ120に拡大
+                    input_summary = st.text_area("内容", height=120)
                     
                     submitted = st.form_submit_button("登録")
                     
@@ -523,7 +535,10 @@ def main():
                                 ea_date = st.date_input("活動日", value=ea_date_val, min_value=datetime.date(2000, 1, 1))
                                 curr_act = edit_row['活動'] if edit_row['活動'] in ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"] else "その他"
                                 ea_act = st.selectbox("活動", ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"], index=["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"].index(curr_act))
-                                ea_summary = st.text_area("要点・内容", value=edit_row['要点'], height=100)
+                                
+                                # 修正: 編集画面も「内容」、高さ120に
+                                ea_summary = st.text_area("内容", value=edit_row['要点'], height=120)
+                                
                                 c_save, c_cancel = st.columns(2)
                                 with c_save:
                                     if st.form_submit_button("保存"):
@@ -536,16 +551,10 @@ def main():
                                         st.session_state.edit_activity_id = None
                                         st.rerun()
 
-                    # ★修正: 一覧表示（要点全文を最初から表示）
                     for idx, row in my_activities.iterrows():
                         label_text = f"📅 {row['記録日']}　📝 {row['活動']}"
                         
-                        # ★アコーディオンの内容に要点は含めず、タイトルと一緒に表示
                         with st.expander(label_text, expanded=False):
-                            # 要点は最初から見えているようにする
-                            # アコーディオンの中にはボタンだけを配置
-                            
-                            # 操作ボタン
                             c_edit, c_del = st.columns(2)
                             with c_edit:
                                 if st.button("編集", key=f"btn_edit_{row['activity_id']}", use_container_width=True):
@@ -558,7 +567,6 @@ def main():
                                     st.session_state.edit_activity_id = None
                                     st.rerun()
                             
-                            # 削除確認
                             if st.session_state.delete_confirm_id == row['activity_id']:
                                 st.warning("本当に削除しますか？")
                                 c_yes, c_no = st.columns(2)
@@ -572,9 +580,8 @@ def main():
                                         st.session_state.delete_confirm_id = None
                                         st.rerun()
                         
-                        # ★要点をアコーディオンの下に表示（常時表示）
                         st.write(row['要点'])
-                        st.markdown("---") # 区切り線
+                        st.markdown("---")
 
                 else:
                     st.write("まだ記録がありません。")
