@@ -40,40 +40,34 @@ st.markdown("""
         color: #333333;
     }
     
-    /* --- 全体的な余白の削減（スマホ最適化） --- */
-    
-    /* メインエリアの上部余白を削減 */
+    /* --- 全体的な余白の削減 --- */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 2rem !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
     }
-    
-    /* 要素間の隙間（ギャップ）を詰める */
     div[data-testid="stVerticalBlock"] {
         gap: 0.5rem !important;
     }
-    
-    /* 各要素のコンテナ余白を削減 */
     div[data-testid="stElementContainer"] {
         margin-bottom: 0.2rem !important;
     }
 
-    /* テーブルの行間を狭く */
+    /* テーブルスタイル */
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
         padding-top: 2px !important;
         padding-bottom: 2px !important;
         font-size: 13px !important;
     }
     
-    /* 基本情報の表示行間を狭くする */
+    /* 基本情報表示 */
     div[data-testid="stExpander"] .stMarkdown p {
         margin-bottom: 0px !important;
         line-height: 1.4 !important;
     }
     
-    /* タイトルスタイル */
+    /* タイトル */
     .custom-title {
         font-size: 20px !important;
         font-weight: bold !important;
@@ -86,7 +80,7 @@ st.markdown("""
         padding: 5px;
     }
     
-    /* 見出しスタイル */
+    /* 見出し */
     .custom-header {
         font-size: 16px !important;
         font-weight: bold !important;
@@ -96,46 +90,45 @@ st.markdown("""
         margin-top: 15px;
         margin-bottom: 5px;
     }
-
-    /* 見出しテキスト（ボタン横並び用） */
     .custom-header-text {
         font-size: 16px !important;
         font-weight: bold !important;
         color: #006633 !important;
         margin: 0 !important;
-        padding-top: 5px; /* ボタンの高さに合わせる */
+        padding-top: 5px;
         white-space: nowrap;
     }
-    /* 分離した下線 */
     .custom-header-line {
         border-bottom: 1px solid #ccc;
         margin-top: 0px;
         margin-bottom: 5px;
     }
     
-    /* 入力フォームのデザイン調整（角丸・余白削減） */
+    /* 入力フォームのデザイン調整 */
     .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea {
         border: 1px solid #666 !important;
         background-color: #ffffff !important;
         border-radius: 6px !important;
-        padding: 4px 8px !important;
-        min-height: 0px !important;
+        padding: 8px 8px !important;
+        font-size: 14px !important;
     }
-    /* ラベルの余白も詰める */
+    .stSelectbox div[data-baseweb="select"] span {
+        line-height: 1.2 !important;
+    }
+
     .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label {
         margin-bottom: 0px !important;
         font-size: 13px !important;
     }
     
-    /* ヘルプボタン（ポップオーバー）の微調整 */
+    /* ヘルプボタン */
     div[data-testid="stPopover"] button {
         padding: 0px 8px !important;
         height: auto !important;
-        min-height: 0px !important;
         border: 1px solid #ccc !important;
     }
 
-    /* --- ファイルアップローダー --- */
+    /* ファイルアップローダー */
     [data-testid="stFileUploaderDropzone"] div div span, [data-testid="stFileUploaderDropzone"] div div small {
         display: none;
     }
@@ -313,6 +306,36 @@ def update_sheet_data(sheet_name, id_column, target_id, update_dict):
         st.error(f"更新エラー: {str(e)}")
         return False
 
+# --- 行削除関数 ---
+def delete_sheet_row(sheet_name, id_column, target_id):
+    sheet = get_spreadsheet_connection()
+    if isinstance(sheet, str):
+        st.error(f"接続エラー: {sheet}")
+        return False
+    worksheet = sheet.worksheet(sheet_name)
+    header_cells = worksheet.row_values(1)
+    try:
+        pid_col_index = header_cells.index(id_column) + 1
+    except ValueError:
+        return False
+    all_ids = worksheet.col_values(pid_col_index)
+    target_row_num = -1
+    str_search_id = str(target_id)
+    for i, val in enumerate(all_ids):
+        if str(val) == str_search_id:
+            target_row_num = i + 1
+            break
+    if target_row_num == -1:
+        return False
+    try:
+        worksheet.delete_rows(target_row_num)
+        st.toast("削除しました", icon="🗑️")
+        return True
+    except Exception as e:
+        st.error(f"削除エラー: {str(e)}")
+        return False
+
+# --- インポート関数 ---
 def import_csv_to_sheet_safe(sheet_name, df_upload, target_columns, id_column, date_columns=[]):
     sheet = get_spreadsheet_connection()
     worksheet = sheet.worksheet(sheet_name)
@@ -347,10 +370,10 @@ def import_csv_to_sheet_safe(sheet_name, df_upload, target_columns, id_column, d
 def custom_title(text):
     st.markdown(f'<div class="custom-title">{text}</div>', unsafe_allow_html=True)
 
-# --- カスタムヘッダー関数（スマホ配置修正版） ---
+# --- カスタムヘッダー関数（エラー修正版） ---
 def custom_header(text, help_text=None):
     if help_text:
-        # スマホで崩れないよう、比率を調整し余白カラムを削除
+        # ★修正箇所: 受け取る変数を2つに修正
         col1, col2 = st.columns([9, 1], gap="small")
         with col1:
             st.markdown(f'<div class="custom-header-text">{text}</div>', unsafe_allow_html=True)
@@ -380,12 +403,12 @@ def main():
         else:
             df_persons['年齢'] = None
 
-    # メニュー名変更
     menu = st.sidebar.radio("メニュー", ["利用者基本情報・活動記録", "基本情報登録", "データ管理・移行"])
 
-    # ステート管理
     if 'selected_person_id' not in st.session_state:
         st.session_state.selected_person_id = None
+    if 'delete_confirm_id' not in st.session_state:
+        st.session_state.delete_confirm_id = None
 
     # =========================================================
     # 1. 利用者基本情報・活動記録
@@ -450,14 +473,16 @@ def main():
 
             st.markdown("### 📝 活動記録の入力")
             with st.container(border=True):
-                with st.form("new_activity_form"):
+                with st.form("new_activity_form", clear_on_submit=True):
                     col_a, col_b = st.columns(2)
                     input_date = col_a.date_input("活動日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
                     activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
                     input_activity = col_b.selectbox("活動", activity_opts)
-                    input_summary = st.text_area("要点・内容", height=80) # 高さを少し減らして省スペース化
+                    input_summary = st.text_area("要点・内容", height=80)
                     
-                    if st.form_submit_button("登録"):
+                    submitted = st.form_submit_button("登録")
+                    
+                    if submitted:
                         new_id = 1
                         if len(df_activities) > 0:
                             try: new_id = pd.to_numeric(df_activities['activity_id']).max() + 1
@@ -467,7 +492,7 @@ def main():
                         add_data_to_sheet("Activities", new_row)
                         st.rerun()
 
-            custom_header("過去の活動履歴", help_text="カードの右下にある「編集」ボタンで内容を修正できます。")
+            custom_header("過去の活動履歴", help_text="履歴の「編集」または「削除」ボタンで管理できます。")
             if 'edit_activity_id' not in st.session_state:
                 st.session_state.edit_activity_id = None
 
@@ -476,9 +501,11 @@ def main():
                 my_activities = df_activities[df_activities['person_id'] == int(current_person_id)].copy()
                 
                 if not my_activities.empty:
-                    my_activities = my_activities.sort_values('記録日', ascending=False)
+                    if '作成日時' in my_activities.columns:
+                        my_activities = my_activities.sort_values(by=['記録日', '作成日時'], ascending=[False, False])
+                    else:
+                        my_activities = my_activities.sort_values('記録日', ascending=False)
                     
-                    # 編集フォーム
                     if st.session_state.edit_activity_id:
                         edit_row = my_activities[my_activities['activity_id'] == st.session_state.edit_activity_id].iloc[0]
                         with st.container(border=True):
@@ -501,24 +528,37 @@ def main():
                                         st.session_state.edit_activity_id = None
                                         st.rerun()
 
-                    # 一覧表示（カード形式 + 右下ボタン）
                     for idx, row in my_activities.iterrows():
                         with st.container(border=True):
-                            # 上段
                             c_date, c_act = st.columns([1, 2])
                             with c_date: st.write(f"📅 **{row['記録日']}**")
                             with c_act: st.write(f"📝 **{row['活動']}**")
-                            
-                            # 中段（要点）
                             st.write(row['要点'])
-                            
-                            # 下段（右寄せ編集ボタン）
-                            # 左に空白カラム(8割)、右にボタンカラム(2割)
-                            c_void, c_btn = st.columns([8, 2]) 
-                            with c_btn:
+                            c_space, c_edit, c_del = st.columns([7, 1.5, 1.5])
+                            with c_edit:
                                 if st.button("編集", key=f"btn_edit_{row['activity_id']}", use_container_width=True):
                                     st.session_state.edit_activity_id = row['activity_id']
+                                    st.session_state.delete_confirm_id = None 
                                     st.rerun()
+                            with c_del:
+                                if st.button("削除", key=f"btn_del_{row['activity_id']}", use_container_width=True):
+                                    st.session_state.delete_confirm_id = row['activity_id']
+                                    st.session_state.edit_activity_id = None
+                                    st.rerun()
+                            
+                            if st.session_state.delete_confirm_id == row['activity_id']:
+                                with st.container():
+                                    st.warning("この活動記録を削除してもよろしいですか？")
+                                    col_y, col_n = st.columns(2)
+                                    with col_y:
+                                        if st.button("はい、削除します", key=f"del_yes_{row['activity_id']}"):
+                                            if delete_sheet_row("Activities", "activity_id", row['activity_id']):
+                                                st.session_state.delete_confirm_id = None
+                                                st.rerun()
+                                    with col_n:
+                                        if st.button("いいえ", key=f"del_no_{row['activity_id']}"):
+                                            st.session_state.delete_confirm_id = None
+                                            st.rerun()
                 else:
                     st.write("まだ記録がありません。")
             except Exception as e:
@@ -564,7 +604,7 @@ def main():
             st.session_state.edit_person_id = full_row['person_id']
             selected_data = full_row.to_dict()
             is_edit_mode = True
-            st.markdown(f"### ✏️ 編集モード: {selected_data.get('氏名', '')}")
+            st.markdown(f"### ✏️ 編集モード: {selected_data.get('氏名', '')} さんの情報を修正中")
             if st.button("選択を解除"):
                 st.session_state.edit_person_id = None
                 st.rerun()
