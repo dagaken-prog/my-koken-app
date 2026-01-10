@@ -48,9 +48,9 @@ st.markdown("""
         padding-right: 1rem !important;
     }
     
-    /* 垂直方向の隙間をゼロにする（履歴間の幅をなくすため） */
+    /* 垂直方向の隙間を極小にする（履歴間の幅を詰めるため） */
     div[data-testid="stVerticalBlock"] {
-        gap: 0rem !important;
+        gap: 0.1rem !important; /* 0だと重なることがあるため微調整 */
     }
     
     div[data-testid="stElementContainer"] {
@@ -61,7 +61,7 @@ st.markdown("""
     div[data-testid="stBorder"] {
         margin-bottom: 0px !important;
         margin-top: 0px !important;
-        border-bottom: none !important; /* 下線を消して連結させる場合は有効化 */
+        border-bottom: none !important;
     }
 
     /* テーブルスタイル */
@@ -69,12 +69,6 @@ st.markdown("""
         padding-top: 2px !important;
         padding-bottom: 2px !important;
         font-size: 13px !important;
-    }
-    
-    /* 基本情報表示 */
-    div[data-testid="stExpander"] .stMarkdown p {
-        margin-bottom: 0px !important;
-        line-height: 1.4 !important;
     }
     
     /* タイトル */
@@ -471,23 +465,26 @@ def main():
             age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val)) else ""
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
+            # --- 基本情報表示 (HTML+Gridでレイアウト崩れ防止) ---
+            # ★修正: st.columnsをやめてHTML Gridに変更
             with st.expander("▼ 基本情報", expanded=False):
-                c1, c2, c3 = st.columns(3)
-                c1.markdown(f"**No.:** {selected_row.get('ケース番号', '')}")
-                c2.markdown(f"**事件番号:** {selected_row.get('基本事件番号', '')}")
-                c3.markdown(f"**類型:** {selected_row.get('類型', '')}")
-                c4, c5, c6 = st.columns(3)
-                c4.markdown(f"**氏名:** {selected_row.get('氏名', '')}")
-                c5.markdown(f"**ｼﾒｲ:** {selected_row.get('ｼﾒｲ', '')}")
-                c6.markdown(f"**生年月日:** {selected_row.get('生年月日', '')}")
-                c7, c8, c9 = st.columns(3)
-                c7.markdown(f"**障害類型:** {selected_row.get('障害類型', '')}")
-                c8.markdown(f"**申立人:** {selected_row.get('申立人', '')}")
-                c9.markdown(f"**審判日:** {selected_row.get('審判確定日', '')}")
-                c10, c11, c12 = st.columns(3)
-                c10.markdown(f"**家裁:** {selected_row.get('管轄家裁', '')}")
-                c11.markdown(f"**報告月:** {selected_row.get('家裁報告月', '')}")
-                c12.markdown(f"**状態:** {selected_row.get('現在の状態', '')}")
+                grid_html = f"""
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; font-size: 14px;">
+                    <div><span style="font-weight:bold; color:#555;">No.:</span> {selected_row.get('ケース番号', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">事件番号:</span> {selected_row.get('基本事件番号', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">類型:</span> {selected_row.get('類型', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">氏名:</span> {selected_row.get('氏名', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">ｼﾒｲ:</span> {selected_row.get('ｼﾒｲ', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">生年月日:</span> {selected_row.get('生年月日', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">障害類型:</span> {selected_row.get('障害類型', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">申立人:</span> {selected_row.get('申立人', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">審判日:</span> {selected_row.get('審判確定日', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">家裁:</span> {selected_row.get('管轄家裁', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">報告月:</span> {selected_row.get('家裁報告月', '')}</div>
+                    <div><span style="font-weight:bold; color:#555;">状態:</span> {selected_row.get('現在の状態', '')}</div>
+                </div>
+                """
+                st.markdown(grid_html, unsafe_allow_html=True)
 
             st.markdown("### 📝 活動記録の入力")
             with st.container(border=True):
@@ -497,7 +494,6 @@ def main():
                     activity_opts = ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"]
                     input_activity = col_b.selectbox("活動", activity_opts)
                     
-                    # 修正: ラベルを「内容」に変更、高さ120に拡大
                     input_summary = st.text_area("内容", height=120)
                     
                     submitted = st.form_submit_button("登録")
@@ -536,7 +532,6 @@ def main():
                                 curr_act = edit_row['活動'] if edit_row['活動'] in ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"] else "その他"
                                 ea_act = st.selectbox("活動", ["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"], index=["面会", "打ち合わせ", "電話", "メール", "行政手続き", "財産管理", "その他"].index(curr_act))
                                 
-                                # 修正: 編集画面も「内容」、高さ120に
                                 ea_summary = st.text_area("内容", value=edit_row['要点'], height=120)
                                 
                                 c_save, c_cancel = st.columns(2)
