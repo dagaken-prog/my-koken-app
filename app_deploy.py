@@ -233,7 +233,6 @@ def normalize_date_str(date_val):
 
 def calculate_age(born):
     if not born: return None
-    # どんな形式でもまずは正規化してみる
     born_str = normalize_date_str(born)
     if not born_str: return None
     try:
@@ -241,7 +240,6 @@ def calculate_age(born):
         if pd.isna(born_date): return None
         born_date = born_date.date()
         today = datetime.date.today()
-        # 修正: born_date を使用
         return today.year - born_date.year - ((today.month, today.day) < (born_date.month, born_date.day))
     except:
         return None
@@ -502,7 +500,7 @@ def main():
                         add_data_to_sheet("Activities", new_row)
                         st.rerun()
 
-            custom_header("過去の活動履歴", help_text="履歴の「編集」または「削除」ボタンで管理できます。")
+            custom_header("過去の活動履歴", help_text="履歴の「＞」をタップして開くと、編集・削除ボタンが表示されます。")
             if 'edit_activity_id' not in st.session_state:
                 st.session_state.edit_activity_id = None
 
@@ -538,15 +536,17 @@ def main():
                                         st.session_state.edit_activity_id = None
                                         st.rerun()
 
+                    # ★修正: 一覧表示（要点全文を最初から表示）
                     for idx, row in my_activities.iterrows():
-                        with st.container(border=True):
-                            # ★修正: カラムを使わず横並び表示
-                            st.markdown(f"📅 **{row['記録日']}**　　📝 **{row['活動']}**")
+                        label_text = f"📅 {row['記録日']}　📝 {row['活動']}"
+                        
+                        # ★アコーディオンの内容に要点は含めず、タイトルと一緒に表示
+                        with st.expander(label_text, expanded=False):
+                            # 要点は最初から見えているようにする
+                            # アコーディオンの中にはボタンだけを配置
                             
-                            st.write(row['要点'])
-                            
-                            # ★修正: 編集・削除ボタンを横並びにするレイアウト
-                            c_space, c_edit, c_del = st.columns([6, 2, 2])
+                            # 操作ボタン
+                            c_edit, c_del = st.columns(2)
                             with c_edit:
                                 if st.button("編集", key=f"btn_edit_{row['activity_id']}", use_container_width=True):
                                     st.session_state.edit_activity_id = row['activity_id']
@@ -558,19 +558,24 @@ def main():
                                     st.session_state.edit_activity_id = None
                                     st.rerun()
                             
+                            # 削除確認
                             if st.session_state.delete_confirm_id == row['activity_id']:
-                                with st.container():
-                                    st.warning("この活動記録を削除してもよろしいですか？")
-                                    col_y, col_n = st.columns(2)
-                                    with col_y:
-                                        if st.button("はい、削除します", key=f"del_yes_{row['activity_id']}"):
-                                            if delete_sheet_row("Activities", "activity_id", row['activity_id']):
-                                                st.session_state.delete_confirm_id = None
-                                                st.rerun()
-                                    with col_n:
-                                        if st.button("いいえ", key=f"del_no_{row['activity_id']}"):
+                                st.warning("本当に削除しますか？")
+                                c_yes, c_no = st.columns(2)
+                                with c_yes:
+                                    if st.button("はい", key=f"del_yes_{row['activity_id']}", use_container_width=True):
+                                        if delete_sheet_row("Activities", "activity_id", row['activity_id']):
                                             st.session_state.delete_confirm_id = None
                                             st.rerun()
+                                with c_no:
+                                    if st.button("いいえ", key=f"del_no_{row['activity_id']}", use_container_width=True):
+                                        st.session_state.delete_confirm_id = None
+                                        st.rerun()
+                        
+                        # ★要点をアコーディオンの下に表示（常時表示）
+                        st.write(row['要点'])
+                        st.markdown("---") # 区切り線
+
                 else:
                     st.write("まだ記録がありません。")
             except Exception as e:
