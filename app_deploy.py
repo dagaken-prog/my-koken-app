@@ -112,8 +112,17 @@ st.markdown("""
         padding: 8px 8px !important;
         font-size: 14px !important;
     }
+    
+    /* セレクトボックスの文字切れ対策 */
+    .stSelectbox div[data-baseweb="select"] > div {
+        height: auto !important;
+        min-height: 38px !important;
+        white-space: normal !important;
+        overflow: visible !important;
+    }
     .stSelectbox div[data-baseweb="select"] span {
-        line-height: 1.2 !important;
+        line-height: 1.3 !important;
+        white-space: normal !important;
     }
 
     .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label {
@@ -224,14 +233,16 @@ def normalize_date_str(date_val):
 
 def calculate_age(born):
     if not born: return None
-    born_str = str(born).strip()
-    if not born_str or born_str.lower() == 'nan': return None
+    # どんな形式でもまずは正規化してみる
+    born_str = normalize_date_str(born)
+    if not born_str: return None
     try:
         born_date = pd.to_datetime(born_str, errors='coerce')
         if pd.isna(born_date): return None
         born_date = born_date.date()
         today = datetime.date.today()
-        return today.year - born_date.year - ((today.month, today.day) < (born.month, born.day))
+        # 修正: born_date を使用
+        return today.year - born_date.year - ((today.month, today.day) < (born_date.month, born_date.day))
     except:
         return None
 
@@ -373,7 +384,6 @@ def custom_title(text):
 # --- カスタムヘッダー関数（エラー修正版） ---
 def custom_header(text, help_text=None):
     if help_text:
-        # ★修正箇所: 受け取る変数を2つに修正
         col1, col2 = st.columns([9, 1], gap="small")
         with col1:
             st.markdown(f'<div class="custom-header-text">{text}</div>', unsafe_allow_html=True)
@@ -530,11 +540,13 @@ def main():
 
                     for idx, row in my_activities.iterrows():
                         with st.container(border=True):
-                            c_date, c_act = st.columns([1, 2])
-                            with c_date: st.write(f"📅 **{row['記録日']}**")
-                            with c_act: st.write(f"📝 **{row['活動']}**")
+                            # ★修正: カラムを使わず横並び表示
+                            st.markdown(f"📅 **{row['記録日']}**　　📝 **{row['活動']}**")
+                            
                             st.write(row['要点'])
-                            c_space, c_edit, c_del = st.columns([7, 1.5, 1.5])
+                            
+                            # ★修正: 編集・削除ボタンを横並びにするレイアウト
+                            c_space, c_edit, c_del = st.columns([6, 2, 2])
                             with c_edit:
                                 if st.button("編集", key=f"btn_edit_{row['activity_id']}", use_container_width=True):
                                     st.session_state.edit_activity_id = row['activity_id']
