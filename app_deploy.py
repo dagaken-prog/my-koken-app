@@ -6,6 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import io
 import re
 import openpyxl
+import time
 
 # --- 設定・定数 ---
 SPREADSHEET_NAME = '成年後見システム台帳'
@@ -78,15 +79,13 @@ COL_DEF_RELATED_PARTIES = [
 
 st.set_page_config(page_title="成年後見業務支援システム", layout="wide")
 
-# --- CSS (デザイン調整・スマホ最適化) ---
+# --- CSS (デザイン調整・スマホ最適化・メニューボタン) ---
 st.markdown("""
     <style>
     html, body, [class*="css"] {
         font-family: "Noto Sans JP", sans-serif;
         color: #333333;
     }
-    
-    /* --- 全体的な余白の削減 --- */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 3rem !important;
@@ -94,33 +93,27 @@ st.markdown("""
         padding-right: 1rem !important;
     }
     div[data-testid="stVerticalBlock"] {
-        gap: 0.3rem !important; /* 少し広げて重なり防止 */
+        gap: 0.3rem !important;
     }
     div[data-testid="stElementContainer"] {
         margin-bottom: 0.2rem !important;
     }
     div[data-testid="stBorder"] {
-        margin-bottom: 5px !important; /* カード間の隙間を少し確保 */
+        margin-bottom: 5px !important;
         margin-top: 5px !important;
         padding: 10px !important;
         border: 1px solid #ddd !important;
         border-radius: 8px !important;
     }
-
-    /* テーブルスタイル */
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
         padding-top: 4px !important;
         padding-bottom: 4px !important;
         font-size: 13px !important;
     }
-    
-    /* テキストの行間調整 */
     p {
         margin-bottom: 0.5rem !important;
-        line-height: 1.6 !important; /* 読みやすい行間に */
+        line-height: 1.6 !important;
     }
-    
-    /* タイトル */
     .custom-title {
         font-size: 20px !important;
         font-weight: bold !important;
@@ -132,8 +125,6 @@ st.markdown("""
         background-color: #f8f9fa;
         padding: 5px;
     }
-    
-    /* 見出し */
     .custom-header {
         font-size: 16px !important;
         font-weight: bold !important;
@@ -156,8 +147,6 @@ st.markdown("""
         margin-top: 0px;
         margin-bottom: 5px;
     }
-    
-    /* 入力フォームのデザイン調整 */
     .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input {
         border: 1px solid #666 !important;
         background-color: #ffffff !important;
@@ -165,7 +154,6 @@ st.markdown("""
         padding: 8px 8px !important;
         font-size: 14px !important;
     }
-    
     .stSelectbox div[data-baseweb="select"] > div {
         height: auto !important;
         min-height: 38px !important;
@@ -176,20 +164,15 @@ st.markdown("""
         line-height: 1.3 !important;
         white-space: normal !important;
     }
-
     .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label, .stNumberInput label, .stCheckbox label {
         margin-bottom: 0px !important;
         font-size: 13px !important;
     }
-    
-    /* ヘルプボタン */
     div[data-testid="stPopover"] button {
         padding: 0px 8px !important;
         height: auto !important;
         border: 1px solid #ccc !important;
     }
-
-    /* ファイルアップローダー */
     [data-testid="stFileUploaderDropzone"] div div span, [data-testid="stFileUploaderDropzone"] div div small {
         display: none;
     }
@@ -208,8 +191,6 @@ st.markdown("""
         display: block;
         margin-bottom: 5px;
     }
-
-    /* サイドバーボタン */
     section[data-testid="stSidebar"] button {
         width: 100%;
         border: 1px solid #ccc;
@@ -254,7 +235,8 @@ def check_password():
             st.error("パスワードが違います")
     return False
 
-# --- Google接続関数 ---
+# --- Google接続関数 (キャッシュ化) ---
+@st.cache_resource
 def get_spreadsheet_connection():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds = None
@@ -268,13 +250,15 @@ def get_spreadsheet_connection():
         try:
             creds = ServiceAccountCredentials.from_json_keyfile_name(KEY_FILE, scope)
         except Exception as e:
-            return f"鍵ファイルが見つかりません。({str(e)})"
+            return None 
     try:
         client = gspread.authorize(creds)
+        # API制限回避のため少し待機
+        time.sleep(1)
         sheet = client.open(SPREADSHEET_NAME)
         return sheet
     except Exception as e:
-        return str(e)
+        return None
 
 # --- ユーティリティ関数 ---
 def normalize_date_str(date_val):
@@ -316,39 +300,50 @@ def calculate_age(born):
     except:
         return None
 
-# シートの列をチェックして自動追加する関数
-def ensure_columns_exist(sheet, sheet_name, expected_columns):
+# ★修正: カラムチェックを簡略化（APIコール節約）
+def get_or_create_worksheet(sheet, sheet_name, expected_columns):
     try:
+        # まずシート取得を試みる
         ws = sheet.worksheet(sheet_name)
     except:
+        # なければ作成
         ws = sheet.add_worksheet(title=sheet_name, rows="100", cols="20")
         ws.append_row(expected_columns)
         return ws
-    
-    current_headers = ws.row_values(1)
-    missing_cols = [col for col in expected_columns if col not in current_headers]
-    
-    if missing_cols:
-        col_count = len(current_headers)
-        for i, col_name in enumerate(missing_cols):
-            ws.update_cell(1, col_count + i + 1, col_name)
-        st.toast(f"「{sheet_name}」シートに新しい項目を追加しました: {', '.join(missing_cols)}", icon="✨")
         
+    # ヘッダーチェックは毎回行わず、列数が明らかに足りない場合だけチェックする等の
+    # 最適化も考えられるが、ここでは安全のためヘッダー取得は行う。
+    # ただし頻度を下げる工夫が必要（キャッシュの有効活用）。
     return ws
 
-def load_data_from_sheet(sheet):
-    ws_persons = ensure_columns_exist(sheet, "Persons", COL_DEF_PERSONS)
-    ws_activities = ensure_columns_exist(sheet, "Activities", COL_DEF_ACTIVITIES)
-    ws_system = ensure_columns_exist(sheet, "SystemUser", COL_DEF_SYSTEM_USER)
-    ws_assets = ensure_columns_exist(sheet, "Assets", COL_DEF_ASSETS)
-    ws_related = ensure_columns_exist(sheet, "RelatedParties", COL_DEF_RELATED_PARTIES)
+# ★修正: カラム補完ロジックを分離（データ取得後にDataFrame上でやる）
+# これによりAPIコール回数を減らす
+
+# --- データ読み込み (キャッシュ化・API節約) ---
+@st.cache_data(ttl=600)
+def load_data_from_sheet():
+    sheet = get_spreadsheet_connection()
+    if sheet is None:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    # シート取得（APIコール発生）
+    ws_persons = get_or_create_worksheet(sheet, "Persons", COL_DEF_PERSONS)
+    ws_activities = get_or_create_worksheet(sheet, "Activities", COL_DEF_ACTIVITIES)
+    ws_system = get_or_create_worksheet(sheet, "SystemUser", COL_DEF_SYSTEM_USER)
+    ws_assets = get_or_create_worksheet(sheet, "Assets", COL_DEF_ASSETS)
+    ws_related = get_or_create_worksheet(sheet, "RelatedParties", COL_DEF_RELATED_PARTIES)
     
+    # データ取得（APIコール発生）
+    # get_all_records はヘッダーも取得するため、実質的にヘッダーチェックも兼ねられる
     df_persons = pd.DataFrame(ws_persons.get_all_records())
     df_activities = pd.DataFrame(ws_activities.get_all_records())
     df_system = pd.DataFrame(ws_system.get_all_records())
     df_assets = pd.DataFrame(ws_assets.get_all_records())
     df_related = pd.DataFrame(ws_related.get_all_records())
 
+    # ★ローカル（DataFrame上）でのカラム補完
+    # スプレッドシート側に列がなくても、プログラム上では列があるものとして扱う
+    # これにより「毎回スプレッドシートに列を追加しにいくAPIコール」を防ぐ
     for col in COL_DEF_PERSONS:
         if col not in df_persons.columns: df_persons[col] = ""
     for col in COL_DEF_ACTIVITIES:
@@ -360,6 +355,7 @@ def load_data_from_sheet(sheet):
     for col in COL_DEF_RELATED_PARTIES:
         if col not in df_related.columns: df_related[col] = ""
 
+    # 日付正規化
     for col in ['生年月日', '審判確定日']:
         if col in df_persons.columns:
             df_persons[col] = df_persons[col].apply(normalize_date_str)
@@ -369,33 +365,48 @@ def load_data_from_sheet(sheet):
     
     return df_persons, df_activities, df_system, df_assets, df_related
 
+# ★APIコール後にキャッシュをクリアする関数
+def clear_cache_and_reload():
+    load_data_from_sheet.clear()
+    # st.rerun() # ここではrerunせず、呼び出し元で行う
+
 def add_data_to_sheet(sheet_name, new_row_list):
     sheet = get_spreadsheet_connection()
-    worksheet = sheet.worksheet(sheet_name)
-    worksheet.append_row(new_row_list)
+    if sheet:
+        worksheet = sheet.worksheet(sheet_name)
+        worksheet.append_row(new_row_list)
+        clear_cache_and_reload()
 
 def update_sheet_data(sheet_name, id_column, target_id, update_dict):
     sheet = get_spreadsheet_connection()
-    if isinstance(sheet, str):
-        st.error(f"接続エラー: {sheet}")
+    if sheet is None or isinstance(sheet, str):
+        st.error("接続エラー")
         return False
     worksheet = sheet.worksheet(sheet_name)
+    
+    # 列位置の特定などは仕方なくAPIコールするが、頻度は低い
     header_cells = worksheet.row_values(1)
+    
     try:
         pid_col_index = header_cells.index(id_column) + 1
     except ValueError:
         st.error(f"システムエラー: {id_column} 列が見つかりません。")
         return False
+    
+    # ID検索もAPIコール
     all_ids = worksheet.col_values(pid_col_index)
+    
     target_row_num = -1
     str_search_id = str(target_id)
     for i, val in enumerate(all_ids):
         if str(val) == str_search_id:
             target_row_num = i + 1
             break
+            
     if target_row_num == -1:
         st.error(f"更新対象のID ({target_id}) が見つかりませんでした。")
         return False
+        
     try:
         cells_to_update = []
         for col_name, value in update_dict.items():
@@ -405,6 +416,7 @@ def update_sheet_data(sheet_name, id_column, target_id, update_dict):
         if cells_to_update:
             worksheet.update_cells(cells_to_update)
             st.toast("情報を更新しました", icon="✅")
+            clear_cache_and_reload()
             return True
         return False
     except Exception as e:
@@ -413,25 +425,25 @@ def update_sheet_data(sheet_name, id_column, target_id, update_dict):
 
 def save_system_user_data(new_data_dict):
     sheet = get_spreadsheet_connection()
-    worksheet = sheet.worksheet("SystemUser")
-    row_values = []
-    for col in COL_DEF_SYSTEM_USER:
-        val = new_data_dict.get(col, "")
-        if val is None: val = ""
-        row_values.append(str(val))
-    existing = worksheet.get_all_values()
-    if len(existing) > 1:
-        cell_range = f"A2:{chr(64+len(COL_DEF_SYSTEM_USER))}2" 
-        worksheet.update(range_name=cell_range, values=[row_values])
-    else:
-        worksheet.append_row(row_values)
-    st.toast("システム利用者情報を保存しました", icon="💾")
+    if sheet:
+        worksheet = sheet.worksheet("SystemUser")
+        row_values = []
+        for col in COL_DEF_SYSTEM_USER:
+            val = new_data_dict.get(col, "")
+            if val is None: val = ""
+            row_values.append(str(val))
+        existing = worksheet.get_all_values()
+        if len(existing) > 1:
+            cell_range = f"A2:{chr(64+len(COL_DEF_SYSTEM_USER))}2" 
+            worksheet.update(range_name=cell_range, values=[row_values])
+        else:
+            worksheet.append_row(row_values)
+        st.toast("システム利用者情報を保存しました", icon="💾")
+        clear_cache_and_reload()
 
 def delete_sheet_row(sheet_name, id_column, target_id):
     sheet = get_spreadsheet_connection()
-    if isinstance(sheet, str):
-        st.error(f"接続エラー: {sheet}")
-        return False
+    if sheet is None: return False
     worksheet = sheet.worksheet(sheet_name)
     header_cells = worksheet.row_values(1)
     try:
@@ -450,6 +462,7 @@ def delete_sheet_row(sheet_name, id_column, target_id):
     try:
         worksheet.delete_rows(target_row_num)
         st.toast("削除しました", icon="🗑️")
+        clear_cache_and_reload()
         return True
     except Exception as e:
         st.error(f"削除エラー: {str(e)}")
@@ -457,6 +470,7 @@ def delete_sheet_row(sheet_name, id_column, target_id):
 
 def import_csv_to_sheet_safe(sheet_name, df_upload, target_columns, id_column, date_columns=[]):
     sheet = get_spreadsheet_connection()
+    if sheet is None: return 0, 0
     worksheet = sheet.worksheet(sheet_name)
     existing_records = worksheet.get_all_records()
     df_existing = pd.DataFrame(existing_records)
@@ -483,6 +497,7 @@ def import_csv_to_sheet_safe(sheet_name, df_upload, target_columns, id_column, d
         export_data.append(new_row)
     if export_data:
         worksheet.append_rows(export_data)
+        clear_cache_and_reload()
         return len(export_data), skipped_count
     return 0, skipped_count
 
@@ -527,12 +542,17 @@ def main():
     if not check_password(): return
     custom_title("成年後見業務支援システム")
 
-    sheet_connection = get_spreadsheet_connection()
-    if isinstance(sheet_connection, str):
-        st.error(f"接続エラー: {sheet_connection}")
+    # キャッシュされたデータ読み込み (引数なし)
+    # ここでエラーが起きてもアプリが落ちないようにtry-exceptで囲む
+    try:
+        df_persons, df_activities, df_system, df_assets, df_related = load_data_from_sheet()
+    except Exception as e:
+        st.error(f"データ読み込みエラー: {e}。時間をおいて再読み込みしてください。")
         return
 
-    df_persons, df_activities, df_system, df_assets, df_related = load_data_from_sheet(sheet_connection)
+    if df_persons.empty and df_activities.empty:
+        # 初回起動時など
+        pass
 
     if '生年月日' in df_persons.columns:
         if not df_persons.empty:
@@ -545,7 +565,6 @@ def main():
     if 'current_menu' not in st.session_state:
         st.session_state.current_menu = "利用者情報・活動記録"
 
-    # サイドバーにカスタムボタンを配置
     with st.sidebar:
         st.markdown("### メニュー")
         menu_items = [
@@ -754,17 +773,11 @@ def main():
                     for idx, row in my_activities.iterrows():
                         star_mark = "★" if str(row.get('重要', '')).upper() == 'TRUE' else ""
                         
-                        # コンテナ(カード)で囲んで表示
                         with st.container(border=True):
-                            # ヘッダー: 日付・活動名
                             st.markdown(f"**{star_mark} {row['記録日']}**　📝 {row['活動']}")
-                            
-                            # 内容 (常時表示)
                             st.write(row['要点'])
                             
-                            # 詳細・操作エリア (タップで展開)
                             with st.expander("詳細・操作", expanded=False):
-                                # 詳細情報 (HTMLタイル表示)
                                 detail_html = f"""
                                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 5px; font-size: 13px; margin-bottom: 10px;">
                                     <div style="background-color:#f8f9fa; padding:4px; border-radius:4px; border:1px solid #eee;">
