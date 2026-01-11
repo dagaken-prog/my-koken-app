@@ -28,7 +28,6 @@ COL_DEF_PERSONS = [
     '現在の状態'
 ]
 
-# 活動記録
 COL_DEF_ACTIVITIES = [
     'activity_id', 
     'person_id', 
@@ -42,7 +41,6 @@ COL_DEF_ACTIVITIES = [
     '作成日時'
 ]
 
-# システム利用者情報
 COL_DEF_SYSTEM_USER = [
     '氏名',
     'シメイ',
@@ -53,7 +51,6 @@ COL_DEF_SYSTEM_USER = [
     'e-mail'
 ]
 
-# 財産情報
 COL_DEF_ASSETS = [
     'asset_id',
     'person_id',
@@ -67,7 +64,6 @@ COL_DEF_ASSETS = [
     '更新日'
 ]
 
-# 関係者・連絡先情報 (★キーパーソン追加)
 COL_DEF_RELATED_PARTIES = [
     'related_id',
     'person_id',
@@ -77,21 +73,23 @@ COL_DEF_RELATED_PARTIES = [
     '電話番号',
     '連携メモ',
     '更新日',
-    'キーパーソン' # ★追加
+    'キーパーソン'
 ]
 
 st.set_page_config(page_title="成年後見業務支援システム", layout="wide")
 
-# --- CSS (デザイン調整・スマホ最適化) ---
+# --- CSS (デザイン調整・スマホ最適化・メニューボタン) ---
 st.markdown("""
     <style>
     html, body, [class*="css"] {
         font-family: "Noto Sans JP", sans-serif;
         color: #333333;
     }
+    
+    /* --- 全体的な余白の削減 --- */
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 2rem !important;
+        padding-bottom: 3rem !important; /* 下部は少し余裕を持たせる */
         padding-left: 1rem !important;
         padding-right: 1rem !important;
     }
@@ -106,15 +104,21 @@ st.markdown("""
         margin-top: 0px !important;
         border-bottom: none !important;
     }
+
+    /* テーブルスタイル */
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
         padding-top: 2px !important;
         padding-bottom: 2px !important;
         font-size: 13px !important;
     }
+    
+    /* 基本情報表示 */
     div[data-testid="stExpander"] .stMarkdown p {
         margin-bottom: 0px !important;
         line-height: 1.4 !important;
     }
+    
+    /* タイトル */
     .custom-title {
         font-size: 20px !important;
         font-weight: bold !important;
@@ -126,6 +130,8 @@ st.markdown("""
         background-color: #f8f9fa;
         padding: 5px;
     }
+    
+    /* 見出し */
     .custom-header {
         font-size: 16px !important;
         font-weight: bold !important;
@@ -148,6 +154,8 @@ st.markdown("""
         margin-top: 0px;
         margin-bottom: 5px;
     }
+    
+    /* 入力フォームのデザイン調整 */
     .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input {
         border: 1px solid #666 !important;
         background-color: #ffffff !important;
@@ -155,6 +163,7 @@ st.markdown("""
         padding: 8px 8px !important;
         font-size: 14px !important;
     }
+    
     .stSelectbox div[data-baseweb="select"] > div {
         height: auto !important;
         min-height: 38px !important;
@@ -169,11 +178,15 @@ st.markdown("""
         margin-bottom: 0px !important;
         font-size: 13px !important;
     }
+    
+    /* ヘルプボタン */
     div[data-testid="stPopover"] button {
         padding: 0px 8px !important;
         height: auto !important;
         border: 1px solid #ccc !important;
     }
+
+    /* ファイルアップローダー */
     [data-testid="stFileUploaderDropzone"] div div span, [data-testid="stFileUploaderDropzone"] div div small {
         display: none;
     }
@@ -192,6 +205,31 @@ st.markdown("""
         display: block;
         margin-bottom: 5px;
     }
+
+    /* --- サイドバーのメニューボタンデザイン --- */
+    /* ボタンのスタイル強化 */
+    section[data-testid="stSidebar"] button {
+        width: 100%; /* 横幅いっぱい */
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        margin-bottom: 8px; /* ボタン間のスペースを広げる */
+        padding-top: 12px;
+        padding-bottom: 12px;
+        font-size: 16px !important; /* フォントサイズを大きく */
+        font-weight: bold;
+        text-align: left;
+        background-color: white;
+        color: #333;
+    }
+    /* ホバー時の挙動 */
+    section[data-testid="stSidebar"] button:hover {
+        border-color: #006633;
+        color: #006633;
+        background-color: #f0fff0;
+    }
+    /* 選択中の状態（アクティブ）を表現するためのCSSクラスはStreamlit標準では難しいので
+       Python側でボタンの色を変えるロジックを入れるか、現在のメニュー名を太字で表示する */
+    
     </style>
 """, unsafe_allow_html=True)
 
@@ -313,7 +351,6 @@ def load_data_from_sheet(sheet):
     df_assets = pd.DataFrame(ws_assets.get_all_records())
     df_related = pd.DataFrame(ws_related.get_all_records())
 
-    # カラム補完
     for col in COL_DEF_PERSONS:
         if col not in df_persons.columns: df_persons[col] = ""
     for col in COL_DEF_ACTIVITIES:
@@ -325,7 +362,6 @@ def load_data_from_sheet(sheet):
     for col in COL_DEF_RELATED_PARTIES:
         if col not in df_related.columns: df_related[col] = ""
 
-    # 日付正規化
     for col in ['生年月日', '審判確定日']:
         if col in df_persons.columns:
             df_persons[col] = df_persons[col].apply(normalize_date_str)
@@ -507,8 +543,38 @@ def main():
         else:
             df_persons['年齢'] = None
 
-    menu = st.sidebar.radio("メニュー", ["利用者情報・活動記録", "関係者・連絡先", "財産管理", "利用者情報登録", "帳票作成", "データ管理・移行", "初期設定"])
+    # --- メニューの状態管理（ボタン式） ---
+    # デフォルトのメニュー（初期表示）
+    if 'current_menu' not in st.session_state:
+        st.session_state.current_menu = "利用者情報・活動記録"
 
+    # サイドバーにカスタムボタンを配置
+    with st.sidebar:
+        st.markdown("### メニュー")
+        
+        # ボタンのリスト（日本語名, 識別子）
+        menu_items = [
+            ("利用者情報・活動記録", "利用者情報・活動記録"),
+            ("関係者・連絡先", "関係者・連絡先"),
+            ("財産管理", "財産管理"),
+            ("利用者情報登録", "利用者情報登録"),
+            ("帳票作成", "帳票作成"),
+            ("データ管理・移行", "データ管理・移行"),
+            ("初期設定", "初期設定")
+        ]
+
+        # ボタンを生成し、クリックされたら session_state を更新
+        for label, key_val in menu_items:
+            # 選択中のボタンは少し見た目を変える（マークをつけるなど）
+            display_label = f"👉 {label}" if st.session_state.current_menu == key_val else label
+            
+            if st.button(display_label, key=f"menu_btn_{key_val}", use_container_width=True):
+                st.session_state.current_menu = key_val
+                st.rerun()
+
+    menu = st.session_state.current_menu
+
+    # 各ステートの初期化
     if 'selected_person_id' not in st.session_state:
         st.session_state.selected_person_id = None
     if 'delete_confirm_id' not in st.session_state:
@@ -565,13 +631,12 @@ def main():
             age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val)) else ""
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
-            with st.expander("▼ 基本情報", expanded=False):
-                # ★修正: キーパーソン情報をHTMLグリッドに追加
+            # ★修正1: デフォルトで開く(expanded=True)
+            with st.expander("▼ 基本情報", expanded=True):
+                # キーパーソン情報をHTMLグリッドに追加
                 kp_html = ""
                 if not df_related.empty:
-                    # 数値型変換
                     df_related['person_id'] = pd.to_numeric(df_related['person_id'], errors='coerce')
-                    # ID一致かつキーパーソンフラグあり
                     kp_df = df_related[
                         (df_related['person_id'] == int(current_person_id)) & 
                         (df_related['キーパーソン'].astype(str).str.upper() == 'TRUE')
@@ -581,7 +646,6 @@ def main():
                         kp_html += "<div><b>★ キーパーソン:</b></div>"
                         for _, kp in kp_df.iterrows():
                             tel = kp.get('電話番号', '')
-                            # 電話リンク作成
                             tel_html = f'<a href="tel:{tel}" style="text-decoration:none; color:#0066cc;">📞 {tel}</a>' if tel else ''
                             kp_html += f"<div style='margin-left:10px; margin-top:2px;'>【{kp.get('関係種別','')}】 {kp.get('氏名','')} {tel_html}</div>"
                         kp_html += "</div>"
@@ -606,7 +670,8 @@ def main():
                 st.markdown(grid_html, unsafe_allow_html=True)
 
             st.markdown("### 📝 活動記録の入力")
-            with st.container(border=True):
+            # ★修正2: デフォルトでは閉じておき、クリックで開く
+            with st.expander("➕ 新しい活動記録を追加する", expanded=False):
                 with st.form("new_activity_form", clear_on_submit=True):
                     col_a, col_b = st.columns(2)
                     input_date = col_a.date_input("活動日", value=datetime.date.today(), min_value=datetime.date(2000, 1, 1))
