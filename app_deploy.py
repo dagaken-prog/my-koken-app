@@ -78,7 +78,7 @@ COL_DEF_RELATED_PARTIES = [
 
 st.set_page_config(page_title="成年後見業務支援システム", layout="wide")
 
-# --- CSS (デザイン調整・スマホ最適化・メニューボタン) ---
+# --- CSS (デザイン調整・スマホ最適化) ---
 st.markdown("""
     <style>
     html, body, [class*="css"] {
@@ -89,33 +89,35 @@ st.markdown("""
     /* --- 全体的な余白の削減 --- */
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 3rem !important; /* 下部は少し余裕を持たせる */
+        padding-bottom: 3rem !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
     }
     div[data-testid="stVerticalBlock"] {
-        gap: 0.1rem !important;
+        gap: 0.3rem !important; /* 少し広げて重なり防止 */
     }
     div[data-testid="stElementContainer"] {
-        margin-bottom: 0.1rem !important;
+        margin-bottom: 0.2rem !important;
     }
     div[data-testid="stBorder"] {
-        margin-bottom: 0px !important;
-        margin-top: 0px !important;
-        border-bottom: none !important;
+        margin-bottom: 5px !important; /* カード間の隙間を少し確保 */
+        margin-top: 5px !important;
+        padding: 10px !important;
+        border: 1px solid #ddd !important;
+        border-radius: 8px !important;
     }
 
     /* テーブルスタイル */
     [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
-        padding-top: 2px !important;
-        padding-bottom: 2px !important;
+        padding-top: 4px !important;
+        padding-bottom: 4px !important;
         font-size: 13px !important;
     }
     
-    /* 基本情報表示 */
-    div[data-testid="stExpander"] .stMarkdown p {
-        margin-bottom: 0px !important;
-        line-height: 1.4 !important;
+    /* テキストの行間調整 */
+    p {
+        margin-bottom: 0.5rem !important;
+        line-height: 1.6 !important; /* 読みやすい行間に */
     }
     
     /* タイトル */
@@ -174,6 +176,7 @@ st.markdown("""
         line-height: 1.3 !important;
         white-space: normal !important;
     }
+
     .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label, .stNumberInput label, .stCheckbox label {
         margin-bottom: 0px !important;
         font-size: 13px !important;
@@ -206,30 +209,25 @@ st.markdown("""
         margin-bottom: 5px;
     }
 
-    /* --- サイドバーのメニューボタンデザイン --- */
-    /* ボタンのスタイル強化 */
+    /* サイドバーボタン */
     section[data-testid="stSidebar"] button {
-        width: 100%; /* 横幅いっぱい */
+        width: 100%;
         border: 1px solid #ccc;
         border-radius: 8px;
-        margin-bottom: 8px; /* ボタン間のスペースを広げる */
+        margin-bottom: 8px;
         padding-top: 12px;
         padding-bottom: 12px;
-        font-size: 16px !important; /* フォントサイズを大きく */
+        font-size: 16px !important;
         font-weight: bold;
         text-align: left;
         background-color: white;
         color: #333;
     }
-    /* ホバー時の挙動 */
     section[data-testid="stSidebar"] button:hover {
         border-color: #006633;
         color: #006633;
         background-color: #f0fff0;
     }
-    /* 選択中の状態（アクティブ）を表現するためのCSSクラスはStreamlit標準では難しいので
-       Python側でボタンの色を変えるロジックを入れるか、現在のメニュー名を太字で表示する */
-    
     </style>
 """, unsafe_allow_html=True)
 
@@ -543,38 +541,8 @@ def main():
         else:
             df_persons['年齢'] = None
 
-    # --- メニューの状態管理（ボタン式） ---
-    # デフォルトのメニュー（初期表示）
-    if 'current_menu' not in st.session_state:
-        st.session_state.current_menu = "利用者情報・活動記録"
+    menu = st.sidebar.radio("メニュー", ["利用者情報・活動記録", "関係者・連絡先", "財産管理", "利用者情報登録", "帳票作成", "データ管理・移行", "初期設定"])
 
-    # サイドバーにカスタムボタンを配置
-    with st.sidebar:
-        st.markdown("### メニュー")
-        
-        # ボタンのリスト（日本語名, 識別子）
-        menu_items = [
-            ("利用者情報・活動記録", "利用者情報・活動記録"),
-            ("関係者・連絡先", "関係者・連絡先"),
-            ("財産管理", "財産管理"),
-            ("利用者情報登録", "利用者情報登録"),
-            ("帳票作成", "帳票作成"),
-            ("データ管理・移行", "データ管理・移行"),
-            ("初期設定", "初期設定")
-        ]
-
-        # ボタンを生成し、クリックされたら session_state を更新
-        for label, key_val in menu_items:
-            # 選択中のボタンは少し見た目を変える（マークをつけるなど）
-            display_label = f"👉 {label}" if st.session_state.current_menu == key_val else label
-            
-            if st.button(display_label, key=f"menu_btn_{key_val}", use_container_width=True):
-                st.session_state.current_menu = key_val
-                st.rerun()
-
-    menu = st.session_state.current_menu
-
-    # 各ステートの初期化
     if 'selected_person_id' not in st.session_state:
         st.session_state.selected_person_id = None
     if 'delete_confirm_id' not in st.session_state:
@@ -631,9 +599,7 @@ def main():
             age_str = f" ({int(age_val)}歳)" if (age_val is not None and not pd.isna(age_val)) else ""
             custom_header(f"{selected_row.get('氏名', '名称不明')}{age_str} さんの詳細・活動記録")
 
-            # ★修正1: デフォルトで開く(expanded=True)
             with st.expander("▼ 基本情報", expanded=True):
-                # キーパーソン情報をHTMLグリッドに追加
                 kp_html = ""
                 if not df_related.empty:
                     df_related['person_id'] = pd.to_numeric(df_related['person_id'], errors='coerce')
@@ -669,8 +635,7 @@ def main():
                 """
                 st.markdown(grid_html, unsafe_allow_html=True)
 
-            st.markdown("### 📝 活動記録の入力")
-            # ★修正2: デフォルトでは閉じておき、クリックで開く
+            st.markdown("### 📝 活動記録")
             with st.expander("➕ 新しい活動記録を追加する", expanded=False):
                 with st.form("new_activity_form", clear_on_submit=True):
                     col_a, col_b = st.columns(2)
@@ -703,7 +668,7 @@ def main():
                         add_data_to_sheet("Activities", new_row)
                         st.rerun()
 
-            custom_header("過去の活動履歴", help_text="履歴の「＞」をタップして開くと、編集・削除ボタンが表示されます。")
+            custom_header("過去の活動履歴", help_text="履歴の「詳細・操作」をタップして開くと、編集・削除ボタンが表示されます。")
             if 'edit_activity_id' not in st.session_state:
                 st.session_state.edit_activity_id = None
 
@@ -766,38 +731,60 @@ def main():
 
                     for idx, row in my_activities.iterrows():
                         star_mark = "★" if str(row.get('重要', '')).upper() == 'TRUE' else ""
-                        label_text = f"{star_mark} 📅 {row['記録日']}　📝 {row['活動']}"
                         
-                        with st.expander(label_text, expanded=False):
-                            st.markdown(f"**場所:** {row.get('場所', '-')}　　**時間:** {row.get('所要時間', '-')}分　　**費用:** {row.get('交通費・立替金', '-')}円")
+                        # ★修正: コンテナ(カード)で囲んで表示
+                        with st.container(border=True):
+                            # ヘッダー: 日付・活動名
+                            st.markdown(f"**{star_mark} {row['記録日']}**　📝 {row['活動']}")
                             
-                            c_edit, c_del = st.columns(2)
-                            with c_edit:
-                                if st.button("編集", key=f"btn_edit_{row['activity_id']}", use_container_width=True):
-                                    st.session_state.edit_activity_id = row['activity_id']
-                                    st.session_state.delete_confirm_id = None 
-                                    st.rerun()
-                            with c_del:
-                                if st.button("削除", key=f"btn_del_{row['activity_id']}", use_container_width=True):
-                                    st.session_state.delete_confirm_id = row['activity_id']
-                                    st.session_state.edit_activity_id = None
-                                    st.rerun()
+                            # 内容 (常時表示)
+                            st.write(row['要点'])
                             
-                            if st.session_state.delete_confirm_id == row['activity_id']:
-                                st.warning("本当に削除しますか？")
-                                c_yes, c_no = st.columns(2)
-                                with c_yes:
-                                    if st.button("はい", key=f"del_yes_{row['activity_id']}", use_container_width=True):
-                                        if delete_sheet_row("Activities", "activity_id", row['activity_id']):
+                            # 詳細・操作エリア (タップで展開)
+                            with st.expander("詳細・操作", expanded=False):
+                                # 詳細情報 (HTMLタイル表示)
+                                detail_html = f"""
+                                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 5px; font-size: 13px; margin-bottom: 10px;">
+                                    <div style="background-color:#f8f9fa; padding:4px; border-radius:4px; border:1px solid #eee;">
+                                        <span style="font-weight:bold; font-size:11px; color:#555;">場所</span><br>
+                                        {row.get('場所', '-') or '-'}
+                                    </div>
+                                    <div style="background-color:#f8f9fa; padding:4px; border-radius:4px; border:1px solid #eee;">
+                                        <span style="font-weight:bold; font-size:11px; color:#555;">時間</span><br>
+                                        {row.get('所要時間', '0')} 分
+                                    </div>
+                                    <div style="background-color:#f8f9fa; padding:4px; border-radius:4px; border:1px solid #eee;">
+                                        <span style="font-weight:bold; font-size:11px; color:#555;">費用</span><br>
+                                        {row.get('交通費・立替金', '0')} 円
+                                    </div>
+                                </div>
+                                """
+                                st.markdown(detail_html, unsafe_allow_html=True)
+                                
+                                c_edit, c_del = st.columns(2)
+                                with c_edit:
+                                    if st.button("編集", key=f"btn_edit_{row['activity_id']}", use_container_width=True):
+                                        st.session_state.edit_activity_id = row['activity_id']
+                                        st.session_state.delete_confirm_id = None 
+                                        st.rerun()
+                                with c_del:
+                                    if st.button("削除", key=f"btn_del_{row['activity_id']}", use_container_width=True):
+                                        st.session_state.delete_confirm_id = row['activity_id']
+                                        st.session_state.edit_activity_id = None
+                                        st.rerun()
+                                
+                                if st.session_state.delete_confirm_id == row['activity_id']:
+                                    st.warning("本当に削除しますか？")
+                                    c_yes, c_no = st.columns(2)
+                                    with c_yes:
+                                        if st.button("はい", key=f"del_yes_{row['activity_id']}", use_container_width=True):
+                                            if delete_sheet_row("Activities", "activity_id", row['activity_id']):
+                                                st.session_state.delete_confirm_id = None
+                                                st.rerun()
+                                    with c_no:
+                                        if st.button("いいえ", key=f"del_no_{row['activity_id']}", use_container_width=True):
                                             st.session_state.delete_confirm_id = None
                                             st.rerun()
-                                with c_no:
-                                    if st.button("いいえ", key=f"del_no_{row['activity_id']}", use_container_width=True):
-                                        st.session_state.delete_confirm_id = None
-                                        st.rerun()
-                        
-                        st.write(row['要点'])
-                        st.markdown("---")
 
                 else:
                     st.write("まだ記録がありません。")
