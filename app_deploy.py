@@ -541,7 +541,29 @@ def main():
         else:
             df_persons['年齢'] = None
 
-    menu = st.sidebar.radio("メニュー", ["利用者情報・活動記録", "関係者・連絡先", "財産管理", "利用者情報登録", "帳票作成", "データ管理・移行", "初期設定"])
+    # --- メニューの状態管理（ボタン式） ---
+    if 'current_menu' not in st.session_state:
+        st.session_state.current_menu = "利用者情報・活動記録"
+
+    # サイドバーにカスタムボタンを配置
+    with st.sidebar:
+        st.markdown("### メニュー")
+        menu_items = [
+            ("利用者情報・活動記録", "利用者情報・活動記録"),
+            ("関係者・連絡先", "関係者・連絡先"),
+            ("財産管理", "財産管理"),
+            ("利用者情報登録", "利用者情報登録"),
+            ("帳票作成", "帳票作成"),
+            ("データ管理・移行", "データ管理・移行"),
+            ("初期設定", "初期設定")
+        ]
+        for label, key_val in menu_items:
+            display_label = f"👉 {label}" if st.session_state.current_menu == key_val else label
+            if st.button(display_label, key=f"menu_btn_{key_val}", use_container_width=True):
+                st.session_state.current_menu = key_val
+                st.rerun()
+
+    menu = st.session_state.current_menu
 
     if 'selected_person_id' not in st.session_state:
         st.session_state.selected_person_id = None
@@ -732,7 +754,7 @@ def main():
                     for idx, row in my_activities.iterrows():
                         star_mark = "★" if str(row.get('重要', '')).upper() == 'TRUE' else ""
                         
-                        # ★修正: コンテナ(カード)で囲んで表示
+                        # コンテナ(カード)で囲んで表示
                         with st.container(border=True):
                             # ヘッダー: 日付・活動名
                             st.markdown(f"**{star_mark} {row['記録日']}**　📝 {row['活動']}")
