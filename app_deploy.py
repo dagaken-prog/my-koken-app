@@ -7,6 +7,7 @@ import io
 import re
 import openpyxl
 import time
+from gspread.exceptions import APIError
 
 # --- 設定・定数 ---
 SPREADSHEET_NAME = '成年後見システム台帳'
@@ -14,201 +15,55 @@ KEY_FILE = 'credentials.json'
 
 # --- 項目定義 ---
 COL_DEF_PERSONS = [
-    'person_id',
-    'ケース番号',
-    '基本事件番号',
-    '氏名',
-    'ｼﾒｲ',
-    '生年月日',
-    '類型',
-    '障害類型',
-    '申立人',
-    '審判確定日',
-    '管轄家裁',
-    '家裁報告月',
-    '現在の状態'
+    'person_id', 'ケース番号', '基本事件番号', '氏名', 'ｼﾒｲ', '生年月日', '類型',
+    '障害類型', '申立人', '審判確定日', '管轄家裁', '家裁報告月', '現在の状態'
 ]
 
 COL_DEF_ACTIVITIES = [
-    'activity_id', 
-    'person_id', 
-    '記録日', 
-    '活動', 
-    '場所',
-    '所要時間',
-    '交通費・立替金',
-    '重要',
-    '要点', 
-    '作成日時'
+    'activity_id', 'person_id', '記録日', '活動', '場所', '所要時間',
+    '交通費・立替金', '重要', '要点', '作成日時'
 ]
 
 COL_DEF_SYSTEM_USER = [
-    '氏名',
-    'シメイ',
-    '生年月日',
-    '〒',
-    '住所',
-    '連絡先電話番号',
-    'e-mail'
+    '氏名', 'シメイ', '生年月日', '〒', '住所', '連絡先電話番号', 'e-mail'
 ]
 
 COL_DEF_ASSETS = [
-    'asset_id',
-    'person_id',
-    '財産種別',
-    '名称・機関名',
-    '支店・詳細',
-    '口座番号・記号',
-    '評価額・残高',
-    '保管場所',
-    '備考',
-    '更新日'
+    'asset_id', 'person_id', '財産種別', '名称・機関名', '支店・詳細', '口座番号・記号',
+    '評価額・残高', '保管場所', '備考', '更新日'
 ]
 
 COL_DEF_RELATED_PARTIES = [
-    'related_id',
-    'person_id',
-    '関係種別',
-    '氏名',
-    '所属・名称',
-    '電話番号',
-    '連携メモ',
-    '更新日',
-    'キーパーソン'
+    'related_id', 'person_id', '関係種別', '氏名', '所属・名称', '電話番号',
+    '連携メモ', '更新日', 'キーパーソン', '〒', '住所', 'e-mail'
 ]
 
 st.set_page_config(page_title="成年後見業務支援システム", layout="wide")
 
-# --- CSS (デザイン調整・スマホ最適化・メニューボタン) ---
+# --- CSS (デザイン調整) ---
 st.markdown("""
     <style>
-    html, body, [class*="css"] {
-        font-family: "Noto Sans JP", sans-serif;
-        color: #333333;
-    }
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 3rem !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-    }
-    div[data-testid="stVerticalBlock"] {
-        gap: 0.3rem !important;
-    }
-    div[data-testid="stElementContainer"] {
-        margin-bottom: 0.2rem !important;
-    }
-    div[data-testid="stBorder"] {
-        margin-bottom: 5px !important;
-        margin-top: 5px !important;
-        padding: 10px !important;
-        border: 1px solid #ddd !important;
-        border-radius: 8px !important;
-    }
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
-        padding-top: 4px !important;
-        padding-bottom: 4px !important;
-        font-size: 13px !important;
-    }
-    p {
-        margin-bottom: 0.5rem !important;
-        line-height: 1.6 !important;
-    }
-    .custom-title {
-        font-size: 20px !important;
-        font-weight: bold !important;
-        color: #006633 !important;
-        border-left: 6px solid #006633;
-        padding-left: 10px;
-        margin-top: 5px;
-        margin-bottom: 10px;
-        background-color: #f8f9fa;
-        padding: 5px;
-    }
-    .custom-header {
-        font-size: 16px !important;
-        font-weight: bold !important;
-        color: #006633 !important;
-        border-bottom: 1px solid #ccc;
-        padding-bottom: 2px;
-        margin-top: 15px;
-        margin-bottom: 5px;
-    }
-    .custom-header-text {
-        font-size: 16px !important;
-        font-weight: bold !important;
-        color: #006633 !important;
-        margin: 0 !important;
-        padding-top: 5px;
-        white-space: nowrap;
-    }
-    .custom-header-line {
-        border-bottom: 1px solid #ccc;
-        margin-top: 0px;
-        margin-bottom: 5px;
-    }
-    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input {
-        border: 1px solid #666 !important;
-        background-color: #ffffff !important;
-        border-radius: 6px !important;
-        padding: 8px 8px !important;
-        font-size: 14px !important;
-    }
-    .stSelectbox div[data-baseweb="select"] > div {
-        height: auto !important;
-        min-height: 38px !important;
-        white-space: normal !important;
-        overflow: visible !important;
-    }
-    .stSelectbox div[data-baseweb="select"] span {
-        line-height: 1.3 !important;
-        white-space: normal !important;
-    }
-    .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label, .stNumberInput label, .stCheckbox label {
-        margin-bottom: 0px !important;
-        font-size: 13px !important;
-    }
-    div[data-testid="stPopover"] button {
-        padding: 0px 8px !important;
-        height: auto !important;
-        border: 1px solid #ccc !important;
-    }
-    [data-testid="stFileUploaderDropzone"] div div span, [data-testid="stFileUploaderDropzone"] div div small {
-        display: none;
-    }
-    [data-testid="stFileUploaderDropzone"] div div::after {
-        content: "ファイルをドラッグ＆ドロップまたは選択";
-        font-size: 12px;
-        font-weight: bold;
-        color: #333;
-        display: block;
-        margin: 5px 0;
-    }
-    [data-testid="stFileUploaderDropzone"] div div::before {
-        content: "CSV/Excelファイル (200MBまで)";
-        font-size: 12px;
-        color: #666;
-        display: block;
-        margin-bottom: 5px;
-    }
-    section[data-testid="stSidebar"] button {
-        width: 100%;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        padding-top: 12px;
-        padding-bottom: 12px;
-        font-size: 16px !important;
-        font-weight: bold;
-        text-align: left;
-        background-color: white;
-        color: #333;
-    }
-    section[data-testid="stSidebar"] button:hover {
-        border-color: #006633;
-        color: #006633;
-        background-color: #f0fff0;
-    }
+    html, body, [class*="css"] { font-family: "Noto Sans JP", sans-serif; color: #333; }
+    .block-container { padding: 1rem 1rem 3rem 1rem !important; }
+    div[data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
+    div[data-testid="stElementContainer"] { margin-bottom: 0.2rem !important; }
+    div[data-testid="stBorder"] { margin: 5px 0 !important; padding: 10px !important; border: 1px solid #ddd !important; border-radius: 8px; }
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 4px !important; font-size: 13px !important; }
+    p { margin-bottom: 0.5rem !important; line-height: 1.6 !important; }
+    h2 { padding: 10px 0 !important; margin-bottom: 20px !important; }
+    .custom-title { font-size: 20px; font-weight: bold; color: #006633; border-left: 6px solid #006633; padding: 5px 0 5px 10px; margin: 5px 0 10px 0; background-color: #f8f9fa; }
+    .custom-header { font-size: 16px; font-weight: bold; color: #006633; border-bottom: 1px solid #ccc; padding-bottom: 2px; margin: 15px 0 5px 0; }
+    .custom-header-text { font-size: 16px; font-weight: bold; color: #006633; margin: 0; padding-top: 5px; white-space: nowrap; }
+    .custom-header-line { border-bottom: 1px solid #ccc; margin: 0 0 5px 0; }
+    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input { border: 1px solid #666 !important; background-color: #fff !important; border-radius: 6px !important; padding: 8px !important; font-size: 14px !important; }
+    .stSelectbox div[data-baseweb="select"] > div { height: auto !important; min-height: 38px !important; }
+    .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label, .stNumberInput label, .stCheckbox label { margin-bottom: 0px !important; font-size: 13px !important; }
+    div[data-testid="stPopover"] button { padding: 0 8px !important; height: auto !important; border: 1px solid #ccc !important; }
+    [data-testid="stFileUploaderDropzone"] div div span, [data-testid="stFileUploaderDropzone"] div div small { display: none; }
+    [data-testid="stFileUploaderDropzone"] div div::after { content: "ファイルをドラッグ＆ドロップまたは選択"; font-size: 12px; font-weight: bold; color: #333; display: block; margin: 5px 0; }
+    [data-testid="stFileUploaderDropzone"] div div::before { content: "CSV/Excelファイル (200MBまで)"; font-size: 12px; color: #666; display: block; margin-bottom: 5px; }
+    section[data-testid="stSidebar"] button { width: 100%; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 8px; padding: 12px; font-size: 16px !important; font-weight: bold; text-align: left; background-color: white; color: #333; }
+    section[data-testid="stSidebar"] button:hover { border-color: #006633; color: #006633; background-color: #f0fff0; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -218,24 +73,26 @@ def check_password():
         st.session_state.password_correct = False
     if st.session_state.password_correct:
         return True
-    st.markdown("## 🔒 ログイン")
-    password = st.text_input("パスワードを入力してください", type="password")
-    if st.button("ログイン"):
-        correct_password = "admin" 
-        try:
-            if "APP_PASSWORD" in st.secrets:
-                correct_password = st.secrets["APP_PASSWORD"]
-        except:
-            pass
-        if password == correct_password:
-            st.session_state.password_correct = True
-            st.success("ログインしました")
-            st.rerun()
-        else:
-            st.error("パスワードが違います")
+    
+    with st.container():
+        st.markdown("## 🔒 ログイン")
+        password = st.text_input("パスワードを入力してください", type="password")
+        if st.button("ログイン"):
+            correct_password = "admin" 
+            try:
+                if "APP_PASSWORD" in st.secrets:
+                    correct_password = st.secrets["APP_PASSWORD"]
+            except:
+                pass
+            if password == correct_password:
+                st.session_state.password_correct = True
+                st.success("ログインしました")
+                st.rerun()
+            else:
+                st.error("パスワードが違います")
     return False
 
-# --- Google接続関数 (キャッシュ化) ---
+# --- Google接続関数 ---
 @st.cache_resource
 def get_spreadsheet_connection():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -254,13 +111,32 @@ def get_spreadsheet_connection():
     try:
         client = gspread.authorize(creds)
         # API制限回避のため少し待機
-        time.sleep(1)
+        time.sleep(0.5)
         sheet = client.open(SPREADSHEET_NAME)
         return sheet
     except Exception as e:
         return None
 
-# --- ユーティリティ関数 ---
+# --- APIリトライ用デコレータ ---
+def api_retry(func):
+    """API制限(429)が出たら待機してリトライするラッパー"""
+    def wrapper(*args, **kwargs):
+        max_retries = 3
+        for i in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except APIError as e:
+                if "429" in str(e):
+                    time.sleep(2 ** (i + 1)) # 2秒, 4秒, 8秒待機
+                    continue
+                else:
+                    raise e
+            except Exception as e:
+                raise e
+        return func(*args, **kwargs)
+    return wrapper
+
+# --- ユーティリティ ---
 def normalize_date_str(date_val):
     if date_val is None: return ""
     text = str(date_val).strip()
@@ -300,60 +176,57 @@ def calculate_age(born):
     except:
         return None
 
-# ★修正: カラムチェックを簡略化（APIコール節約）
-def get_or_create_worksheet(sheet, sheet_name, expected_columns):
+# --- データ取得・整形ロジック (API節約版) ---
+@api_retry
+def fetch_sheet_data_safe(sheet, sheet_name, expected_columns):
+    """
+    シートのデータを取得する。シートがなければ作成する。
+    カラムチェックは取得したデータ上で行い、APIコールを減らす。
+    """
     try:
-        # まずシート取得を試みる
         ws = sheet.worksheet(sheet_name)
     except:
-        # なければ作成
         ws = sheet.add_worksheet(title=sheet_name, rows="100", cols="20")
         ws.append_row(expected_columns)
-        return ws
-        
-    # ヘッダーチェックは毎回行わず、列数が明らかに足りない場合だけチェックする等の
-    # 最適化も考えられるが、ここでは安全のためヘッダー取得は行う。
-    # ただし頻度を下げる工夫が必要（キャッシュの有効活用）。
-    return ws
+        return pd.DataFrame(columns=expected_columns)
 
-# ★修正: カラム補完ロジックを分離（データ取得後にDataFrame上でやる）
-# これによりAPIコール回数を減らす
+    # 全データを一括取得 (APIコール 1回)
+    all_values = ws.get_all_values()
+    
+    if not all_values:
+        # 空の場合はヘッダー追加 (APIコール +1回)
+        ws.append_row(expected_columns)
+        return pd.DataFrame(columns=expected_columns)
 
-# --- データ読み込み (キャッシュ化・API節約) ---
+    # DataFrame化
+    headers = all_values[0]
+    data = all_values[1:]
+    df = pd.DataFrame(data, columns=headers)
+
+    # 不足カラムのチェックと追加 (APIコール +1回/不足時のみ)
+    missing_cols = [c for c in expected_columns if c not in headers]
+    if missing_cols:
+        # シートの右端に追加
+        start_col = len(headers) + 1
+        for i, col in enumerate(missing_cols):
+            ws.update_cell(1, start_col + i, col)
+            df[col] = "" # DFにも空列追加
+        # ユーザーへの通知は省略（頻繁に出るとうるさいため）
+
+    return df
+
 @st.cache_data(ttl=600)
 def load_data_from_sheet():
     sheet = get_spreadsheet_connection()
     if sheet is None:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return None, None, None, None, None
 
-    # シート取得（APIコール発生）
-    ws_persons = get_or_create_worksheet(sheet, "Persons", COL_DEF_PERSONS)
-    ws_activities = get_or_create_worksheet(sheet, "Activities", COL_DEF_ACTIVITIES)
-    ws_system = get_or_create_worksheet(sheet, "SystemUser", COL_DEF_SYSTEM_USER)
-    ws_assets = get_or_create_worksheet(sheet, "Assets", COL_DEF_ASSETS)
-    ws_related = get_or_create_worksheet(sheet, "RelatedParties", COL_DEF_RELATED_PARTIES)
-    
-    # データ取得（APIコール発生）
-    # get_all_records はヘッダーも取得するため、実質的にヘッダーチェックも兼ねられる
-    df_persons = pd.DataFrame(ws_persons.get_all_records())
-    df_activities = pd.DataFrame(ws_activities.get_all_records())
-    df_system = pd.DataFrame(ws_system.get_all_records())
-    df_assets = pd.DataFrame(ws_assets.get_all_records())
-    df_related = pd.DataFrame(ws_related.get_all_records())
-
-    # ★ローカル（DataFrame上）でのカラム補完
-    # スプレッドシート側に列がなくても、プログラム上では列があるものとして扱う
-    # これにより「毎回スプレッドシートに列を追加しにいくAPIコール」を防ぐ
-    for col in COL_DEF_PERSONS:
-        if col not in df_persons.columns: df_persons[col] = ""
-    for col in COL_DEF_ACTIVITIES:
-        if col not in df_activities.columns: df_activities[col] = ""
-    for col in COL_DEF_SYSTEM_USER:
-        if col not in df_system.columns: df_system[col] = ""
-    for col in COL_DEF_ASSETS:
-        if col not in df_assets.columns: df_assets[col] = ""
-    for col in COL_DEF_RELATED_PARTIES:
-        if col not in df_related.columns: df_related[col] = ""
+    # 各シートを一括取得 (リトライ機能付き)
+    df_persons = fetch_sheet_data_safe(sheet, "Persons", COL_DEF_PERSONS)
+    df_activities = fetch_sheet_data_safe(sheet, "Activities", COL_DEF_ACTIVITIES)
+    df_system = fetch_sheet_data_safe(sheet, "SystemUser", COL_DEF_SYSTEM_USER)
+    df_assets = fetch_sheet_data_safe(sheet, "Assets", COL_DEF_ASSETS)
+    df_related = fetch_sheet_data_safe(sheet, "RelatedParties", COL_DEF_RELATED_PARTIES)
 
     # 日付正規化
     for col in ['生年月日', '審判確定日']:
@@ -365,11 +238,10 @@ def load_data_from_sheet():
     
     return df_persons, df_activities, df_system, df_assets, df_related
 
-# ★APIコール後にキャッシュをクリアする関数
 def clear_cache_and_reload():
     load_data_from_sheet.clear()
-    # st.rerun() # ここではrerunせず、呼び出し元で行う
 
+@api_retry
 def add_data_to_sheet(sheet_name, new_row_list):
     sheet = get_spreadsheet_connection()
     if sheet:
@@ -377,52 +249,48 @@ def add_data_to_sheet(sheet_name, new_row_list):
         worksheet.append_row(new_row_list)
         clear_cache_and_reload()
 
+@api_retry
 def update_sheet_data(sheet_name, id_column, target_id, update_dict):
     sheet = get_spreadsheet_connection()
-    if sheet is None or isinstance(sheet, str):
-        st.error("接続エラー")
-        return False
+    if sheet is None or isinstance(sheet, str): return False
+    
     worksheet = sheet.worksheet(sheet_name)
     
-    # 列位置の特定などは仕方なくAPIコールするが、頻度は低い
+    # 検索用セルを一括取得 (APIコール削減)
+    # ヘッダーと対象ID列だけを取得したいが、gspreadの制限があるため
+    # 素直にrow_values(1) と col_values で探す
     header_cells = worksheet.row_values(1)
     
     try:
         pid_col_index = header_cells.index(id_column) + 1
     except ValueError:
-        st.error(f"システムエラー: {id_column} 列が見つかりません。")
         return False
     
-    # ID検索もAPIコール
     all_ids = worksheet.col_values(pid_col_index)
-    
     target_row_num = -1
     str_search_id = str(target_id)
+    
     for i, val in enumerate(all_ids):
         if str(val) == str_search_id:
             target_row_num = i + 1
             break
             
-    if target_row_num == -1:
-        st.error(f"更新対象のID ({target_id}) が見つかりませんでした。")
-        return False
-        
-    try:
-        cells_to_update = []
-        for col_name, value in update_dict.items():
-            if col_name in header_cells:
-                col_num = header_cells.index(col_name) + 1
-                cells_to_update.append(gspread.Cell(target_row_num, col_num, str(value)))
-        if cells_to_update:
-            worksheet.update_cells(cells_to_update)
-            st.toast("情報を更新しました", icon="✅")
-            clear_cache_and_reload()
-            return True
-        return False
-    except Exception as e:
-        st.error(f"更新エラー: {str(e)}")
-        return False
+    if target_row_num == -1: return False
+    
+    cells_to_update = []
+    for col_name, value in update_dict.items():
+        if col_name in header_cells:
+            col_num = header_cells.index(col_name) + 1
+            cells_to_update.append(gspread.Cell(target_row_num, col_num, str(value)))
+    
+    if cells_to_update:
+        worksheet.update_cells(cells_to_update)
+        st.toast("更新しました", icon="✅")
+        clear_cache_and_reload()
+        return True
+    return False
 
+@api_retry
 def save_system_user_data(new_data_dict):
     sheet = get_spreadsheet_connection()
     if sheet:
@@ -438,9 +306,10 @@ def save_system_user_data(new_data_dict):
             worksheet.update(range_name=cell_range, values=[row_values])
         else:
             worksheet.append_row(row_values)
-        st.toast("システム利用者情報を保存しました", icon="💾")
+        st.toast("保存しました", icon="💾")
         clear_cache_and_reload()
 
+@api_retry
 def delete_sheet_row(sheet_name, id_column, target_id):
     sheet = get_spreadsheet_connection()
     if sheet is None: return False
@@ -457,16 +326,12 @@ def delete_sheet_row(sheet_name, id_column, target_id):
         if str(val) == str_search_id:
             target_row_num = i + 1
             break
-    if target_row_num == -1:
-        return False
-    try:
-        worksheet.delete_rows(target_row_num)
-        st.toast("削除しました", icon="🗑️")
-        clear_cache_and_reload()
-        return True
-    except Exception as e:
-        st.error(f"削除エラー: {str(e)}")
-        return False
+    if target_row_num == -1: return False
+    
+    worksheet.delete_rows(target_row_num)
+    st.toast("削除しました", icon="🗑️")
+    clear_cache_and_reload()
+    return True
 
 def import_csv_to_sheet_safe(sheet_name, df_upload, target_columns, id_column, date_columns=[]):
     sheet = get_spreadsheet_connection()
@@ -542,17 +407,16 @@ def main():
     if not check_password(): return
     custom_title("成年後見業務支援システム")
 
-    # キャッシュされたデータ読み込み (引数なし)
-    # ここでエラーが起きてもアプリが落ちないようにtry-exceptで囲む
     try:
-        df_persons, df_activities, df_system, df_assets, df_related = load_data_from_sheet()
+        # データ読み込み（戻り値がNoneならエラー表示して終了）
+        result = load_data_from_sheet()
+        if result[0] is None:
+            st.error("【接続エラー】現在、Googleへのアクセスが制限されています（使いすぎ）。数分待ってから再読み込みしてください。")
+            return
+        df_persons, df_activities, df_system, df_assets, df_related = result
     except Exception as e:
-        st.error(f"データ読み込みエラー: {e}。時間をおいて再読み込みしてください。")
+        st.error(f"システムエラー: {e}")
         return
-
-    if df_persons.empty and df_activities.empty:
-        # 初回起動時など
-        pass
 
     if '生年月日' in df_persons.columns:
         if not df_persons.empty:
@@ -561,7 +425,6 @@ def main():
         else:
             df_persons['年齢'] = None
 
-    # --- メニューの状態管理（ボタン式） ---
     if 'current_menu' not in st.session_state:
         st.session_state.current_menu = "利用者情報・活動記録"
 
@@ -861,7 +724,13 @@ def main():
                     r_org = col3.text_input("所属・名称 (例: 〇〇病院)")
                     r_tel = col4.text_input("電話番号 (例: 090-0000-0000)")
                     
-                    # ★修正: キーパーソンチェック追加
+                    # ★修正: 項目追加 (〒, 住所, e-mail)
+                    col5, col6 = st.columns(2)
+                    r_zip = col5.text_input("〒 (郵便番号)")
+                    r_addr = col6.text_input("住所")
+                    
+                    r_email = st.text_input("e-mail")
+                    
                     r_keyperson = st.checkbox("★キーパーソン (基本情報に表示)")
                     r_note = st.text_area("連携メモ (キーマン等)", height=60)
                     
@@ -874,8 +743,11 @@ def main():
                         
                         k_str = "TRUE" if r_keyperson else ""
                         
-                        # related_id, person_id, 関係種別, 氏名, 所属・名称, 電話番号, 連携メモ, 更新日, キーパーソン
-                        new_row = [int(new_rid), int(current_pid), r_type, r_name, r_org, r_tel, r_note, now_str, k_str]
+                        # カラム順に注意: related_id, person_id, 関係種別, 氏名, 所属・名称, 電話番号, 連携メモ, 更新日, キーパーソン, 〒, 住所, e-mail
+                        new_row = [
+                            int(new_rid), int(current_pid), r_type, r_name, r_org, r_tel, r_note, now_str, k_str,
+                            r_zip, r_addr, r_email
+                        ]
                         add_data_to_sheet("RelatedParties", new_row)
                         st.success("登録しました")
                         st.rerun()
@@ -903,6 +775,12 @@ def main():
                                 col3, col4 = st.columns(2)
                                 er_org = col3.text_input("所属・名称", value=edit_row['所属・名称'])
                                 er_tel = col4.text_input("電話番号", value=edit_row['電話番号'])
+
+                                col5, col6 = st.columns(2)
+                                er_zip = col5.text_input("〒", value=edit_row.get('〒', ''))
+                                er_addr = col6.text_input("住所", value=edit_row.get('住所', ''))
+                                
+                                er_email = st.text_input("e-mail", value=edit_row.get('e-mail', ''))
                                 
                                 curr_kp = True if str(edit_row.get('キーパーソン', '')).upper() == 'TRUE' else False
                                 er_keyperson = st.checkbox("★キーパーソン", value=curr_kp)
@@ -916,7 +794,8 @@ def main():
                                             '関係種別': er_type, '氏名': er_name,
                                             '所属・名称': er_org, '電話番号': er_tel,
                                             '連携メモ': er_note, '更新日': datetime.datetime.now().strftime("%Y-%m-%d"),
-                                            'キーパーソン': k_str
+                                            'キーパーソン': k_str,
+                                            '〒': er_zip, '住所': er_addr, 'e-mail': er_email
                                         }
                                         if update_sheet_data("RelatedParties", "related_id", st.session_state.edit_related_id, upd_dict):
                                             st.session_state.edit_related_id = None
@@ -931,11 +810,22 @@ def main():
                     for idx, row in my_related.iterrows():
                         tel_link = f"📞 [{row['電話番号']}](tel:{row['電話番号']})" if row['電話番号'] else "電話なし"
                         
+                        # e-mailリンク作成
+                        email_val = row.get('e-mail', '')
+                        email_link = f"✉️ [{email_val}](mailto:{email_val})" if email_val else ""
+
                         kp_mark = "★" if str(row.get('キーパーソン', '')).upper() == 'TRUE' else ""
                         label_text = f"{kp_mark}【{row['関係種別']}】 {row['氏名']} ({row['所属・名称']})"
                         
                         with st.expander(label_text, expanded=False):
                             st.markdown(f"**連絡先:** {tel_link}", unsafe_allow_html=True)
+                            if email_link:
+                                st.markdown(f"**Email:** {email_link}", unsafe_allow_html=True)
+                            
+                            addr_full = f"〒{row.get('〒','')} {row.get('住所','')}"
+                            if addr_full.strip() != "〒":
+                                st.markdown(f"**住所:** {addr_full}")
+
                             if row['連携メモ']:
                                 st.info(f"📝 {row['連携メモ']}")
                             
@@ -1321,8 +1211,11 @@ def main():
             in_name = col1.text_input("氏名", value=val_name)
             in_kana = col2.text_input("シメイ (カナ)", value=val_kana)
             in_dob = col1.date_input("生年月日", value=val_dob, min_value=datetime.date(1900, 1, 1))
+            
+            # 住所を〒の隣に配置
             in_zip = col2.text_input("〒 (郵便番号)", value=val_zip)
-            in_addr = st.text_input("住所", value=val_addr)
+            in_addr = col2.text_input("住所", value=val_addr)
+            
             in_tel = col1.text_input("連絡先電話番号", value=val_tel)
             in_email = col2.text_input("e-mail", value=val_email)
             
