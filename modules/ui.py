@@ -75,16 +75,8 @@ def custom_title(text):
     st.markdown(f'<div class="custom-title">{text}</div>', unsafe_allow_html=True)
 
 def custom_header(text, help_text=None):
-    if help_text:
-        col1, col2 = st.columns([9, 1], gap="small")
-        with col1:
-            st.markdown(f'<div class="custom-header-text">{text}</div>', unsafe_allow_html=True)
-        with col2:
-            with st.popover("?", use_container_width=True):
-                st.info(help_text)
-        st.markdown('<div class="custom-header-line"></div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="custom-header">{text}</div>', unsafe_allow_html=True)
+    # help_text引数は互換性のために残しますが、機能は無効化します（ボタンは表示しません）
+    st.markdown(f'<div class="custom-header">{text}</div>', unsafe_allow_html=True)
 
 def fill_excel_template(template_file, data_dict):
     wb = openpyxl.load_workbook(template_file)
@@ -315,9 +307,23 @@ def render_activity_log(df_persons, act_opts):
 def render_related_parties(df_persons, rel_opts):
     custom_header("関係者・連絡先")
     person_opts = {f"{r['氏名']}": r['person_id'] for _, r in df_persons.iterrows()}
-    target_name = st.selectbox("対象者", list(person_opts.keys()))
+    
+    # 選択状態の維持ロジック
+    default_idx = 0
+    if st.session_state.selected_person_id:
+        # 名前（キー）を探す
+        for i, (name, pid) in enumerate(person_opts.items()):
+            if pid == st.session_state.selected_person_id:
+                default_idx = i
+                break
+    
+    target_name = st.selectbox("対象者", list(person_opts.keys()), index=default_idx)
     
     if target_name:
+        pid = person_opts[target_name]
+        # 選択されたらセッション状態も更新
+        if pid != st.session_state.selected_person_id:
+            st.session_state.selected_person_id = pid
         pid = person_opts[target_name]
         
         # 編集フォーム
@@ -412,9 +418,22 @@ def render_related_parties(df_persons, rel_opts):
 def render_assets_management(df_persons, ast_opts):
     custom_header("財産管理")
     person_opts = {f"{r['氏名']}": r['person_id'] for _, r in df_persons.iterrows()}
-    target_name = st.selectbox("対象者", list(person_opts.keys()))
+    
+    # 選択状態の維持ロジック
+    default_idx = 0
+    if st.session_state.selected_person_id:
+        for i, (name, pid) in enumerate(person_opts.items()):
+            if pid == st.session_state.selected_person_id:
+                default_idx = i
+                break
+
+    target_name = st.selectbox("対象者", list(person_opts.keys()), index=default_idx)
     
     if target_name:
+        pid = person_opts[target_name]
+        # 選択されたらセッション状態も更新
+        if pid != st.session_state.selected_person_id:
+            st.session_state.selected_person_id = pid
         pid = person_opts[target_name]
         with st.expander("➕ 財産追加", expanded=False):
             with st.form("new_asset"):
@@ -565,7 +584,26 @@ def render_reports(df_persons):
     custom_header("帳票作成")
     uploaded = st.file_uploader("Excelテンプレート")
     if not df_persons.empty:
-        target = st.selectbox("対象者", df_persons['氏名'])
+        # 選択状態の維持
+        current_name_idx = 0
+        names = df_persons['氏名'].tolist()
+        if st.session_state.selected_person_id:
+            # IDから名前を取得してインデックスを探す
+            row = df_persons[df_persons['person_id'] == st.session_state.selected_person_id]
+            if not row.empty:
+                current_name = row.iloc[0]['氏名']
+                try:
+                    current_name_idx = names.index(current_name)
+                except ValueError:
+                    current_name_idx = 0
+
+        target = st.selectbox("対象者", names, index=current_name_idx)
+        # ここで選択を変えた場合もセッションに反映するかは任意だが、統一感を出すなら反映する
+        selected_row = df_persons[df_persons['氏名'] == target]
+        if not selected_row.empty:
+            pid = selected_row.iloc[0]['person_id']
+            if pid != st.session_state.selected_person_id:
+                st.session_state.selected_person_id = pid
         if st.button("作成") and uploaded:
             p_data = df_persons[df_persons['氏名'] == target].iloc[0].to_dict()
             excel = fill_excel_template(uploaded, p_data)
