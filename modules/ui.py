@@ -205,6 +205,8 @@ def render_activity_log(df_persons, act_opts):
                 <div><span style="font-weight:bold; color:#555;">氏名:</span> {selected_row.get('氏名')}</div>
                 <div><span style="font-weight:bold; color:#555;">ｼﾒｲ:</span> {selected_row.get('ｼﾒｲ')}</div>
                 <div><span style="font-weight:bold; color:#555;">生年月日:</span> {selected_row.get('生年月日')}</div>
+                <div style="grid-column: 1 / -1;"><span style="font-weight:bold; color:#555;">住所:</span> {selected_row.get('住所') or '-'}</div>
+                <div style="grid-column: 1 / -1;"><span style="font-weight:bold; color:#555;">居所:</span> {selected_row.get('居所') or '-'}</div>
                 <div><span style="font-weight:bold; color:#555;">障害類型:</span> {selected_row.get('障害類型')}</div>
                 <div><span style="font-weight:bold; color:#555;">申立人:</span> {selected_row.get('申立人')}</div>
                 <div><span style="font-weight:bold; color:#555;">審判日:</span> {selected_row.get('審判確定日')}</div>
@@ -416,8 +418,7 @@ def render_related_parties(df_persons, rel_opts):
             
             for _, row in my_rel.iterrows():
                 kp_mark = "★" if str(row.get('キーパーソン', '')).upper() == 'TRUE' else ""
-                phone_disp = f" {row['電話番号']}" if row['電話番号'] else ""
-                label_text = f"{kp_mark}【{row['関係種別']}】 {row['氏名']} ({row['所属・名称']}){phone_disp}"
+                label_text = f"{kp_mark}【{row['関係種別']}】 {row['氏名']} ({row['所属・名称']})"
                 
                 with st.expander(label_text, expanded=False):
                     tel_link = f"[{row['電話番号']}](tel:{row['電話番号']})" if row['電話番号'] else "なし"
@@ -531,16 +532,32 @@ def render_person_registration(df_persons, guard_opts):
     # 新規登録フォーム
     with st.expander("➕ 新規登録", expanded=False):
         with st.form("new_person"):
-            c1, c2 = st.columns(2)
-            p_case = c1.text_input("ケース番号")
-            p_name = c1.text_input("氏名")
-            p_kana = c2.text_input("カナ")
-            p_type = c2.selectbox("類型", guard_opts)
-            p_stat = st.selectbox("状態", ["受任中", "終了"])
+            col1, col2 = st.columns(2)
+            p_case = col1.text_input("ケース番号")
+            p_basic = col2.text_input("基本事件番号")
+            
+            col_nm, col_kn = st.columns(2)
+            p_name = col_nm.text_input("氏名 (必須)")
+            p_kana = col_kn.text_input("カナ")
+            
+            p_addr = st.text_input("住所")
+            p_res = st.text_input("居所 (施設名など)")
+            
+            col_dob, col_typ = st.columns(2)
+            p_dob = col_dob.date_input("生年月日", value=None, min_value=datetime.date(1900, 1, 1))
+            p_type = col_typ.selectbox("類型", guard_opts)
+            
             if st.form_submit_button("登録"):
-                nd = {'ケース番号': p_case, '氏名': p_name, 'ｼﾒｲ': p_kana, '類型': p_type, '現在の状態': p_stat}
-                insert_data("persons", nd, MAP_PERSONS)
-                st.rerun()
+                if not p_name:
+                    st.error("氏名は必須です")
+                else:
+                    nd = {
+                        'ケース番号': p_case, '基本事件番号': p_basic, '氏名': p_name, 'ｼﾒｲ': p_kana,
+                        '住所': p_addr, '居所': p_res, '生年月日': str(p_dob) if p_dob else None, 
+                        '類型': p_type, '現在の状態': "受任中"
+                    }
+                    insert_data("persons", nd, MAP_PERSONS)
+                    st.rerun()
     
     if not df_persons.empty:
         st.markdown("### 登録済み一覧")
@@ -566,35 +583,46 @@ def render_person_registration(df_persons, guard_opts):
             st.markdown(f"#### ✏️ {edit_row['氏名']} さんの情報を編集")
             
             with st.form(f"edit_person_full"):
-                c1, c2 = st.columns(2)
-                ep_case = c1.text_input("ケース番号", value=edit_row['ケース番号'] or "")
-                ep_basic = c2.text_input("基本事件番号", value=edit_row['基本事件番号'] or "")
-                ep_name = c1.text_input("氏名", value=edit_row['氏名'] or "")
-                ep_kana = c2.text_input("カナ", value=edit_row['ｼﾒｲ'] or "")
+                col1, col2 = st.columns(2)
+                ep_case = col1.text_input("ケース番号", value=edit_row.get('ケース番号') or "")
+                ep_basic = col2.text_input("基本事件番号", value=edit_row.get('基本事件番号') or "")
                 
-                ep_dob_val = pd.to_datetime(edit_row['生年月日']).date() if pd.notnull(edit_row['生年月日']) and edit_row['生年月日'] else None
-                ep_dob = c1.date_input("生年月日", value=ep_dob_val, min_value=datetime.date(1900, 1, 1))
+                col_nm, col_kn = st.columns(2)
+                ep_name = col_nm.text_input("氏名", value=edit_row.get('氏名') or "")
+                ep_kana = col_kn.text_input("カナ", value=edit_row.get('ｼﾒｲ') or "")
                 
-                try: g_idx = guard_opts.index(edit_row['類型'])
+                col_dob, col_typ = st.columns(2)
+                
+                ep_dob_val = pd.to_datetime(edit_row['生年月日']).date() if pd.notnull(edit_row.get('生年月日')) and edit_row['生年月日'] else None
+                ep_dob = col_dob.date_input("生年月日", value=ep_dob_val, min_value=datetime.date(1900, 1, 1))
+                
+                try: g_idx = guard_opts.index(edit_row.get('類型'))
                 except: g_idx = 0
-                ep_type = c2.selectbox("類型", guard_opts, index=g_idx)
+                ep_type = col_typ.selectbox("類型", guard_opts, index=g_idx)
                 
-                ep_disability = c1.text_input("障害類型", value=edit_row['障害類型'] or "")
-                ep_petitioner = c2.text_input("申立人", value=edit_row['申立人'] or "")
+                ep_addr = st.text_input("住所", value=edit_row.get('住所') or "")
+                ep_res = st.text_input("居所", value=edit_row.get('居所') or "")
                 
-                ep_judg_val = pd.to_datetime(edit_row['審判確定日']).date() if pd.notnull(edit_row['審判確定日']) and edit_row['審判確定日'] else None
-                ep_judg = c1.date_input("審判確定日", value=ep_judg_val, min_value=datetime.date(1900, 1, 1))
+                c_dis, c_pet = st.columns(2)
+                ep_disability = c_dis.text_input("障害類型", value=edit_row.get('障害類型') or "")
+                ep_petitioner = c_pet.text_input("申立人", value=edit_row.get('申立人') or "")
                 
-                ep_court = c2.text_input("管轄家裁", value=edit_row['管轄家裁'] or "")
-                ep_report = c1.text_input("家裁報告月", value=edit_row['家裁報告月'] or "")
+                c_jud, c_crt = st.columns(2)
+                ep_judg_val = pd.to_datetime(edit_row['審判確定日']).date() if pd.notnull(edit_row.get('審判確定日')) and edit_row['審判確定日'] else None
+                ep_judg = c_jud.date_input("審判確定日", value=ep_judg_val, min_value=datetime.date(1900, 1, 1))
+                ep_court = c_crt.text_input("管轄家裁", value=edit_row.get('管轄家裁') or "")
                 
-                try: s_idx = ["受任中", "終了"].index(edit_row['現在の状態'])
+                c_rep, c_st = st.columns(2)
+                ep_report = c_rep.text_input("家裁報告月", value=edit_row.get('家裁報告月') or "")
+                
+                try: s_idx = ["受任中", "終了"].index(edit_row.get('現在の状態'))
                 except: s_idx = 0
-                ep_stat = c2.selectbox("状態", ["受任中", "終了"], index=s_idx)
+                ep_stat = c_st.selectbox("状態", ["受任中", "終了"], index=s_idx)
 
                 if st.form_submit_button("更新"):
                     upd_data = {
                         'ケース番号': ep_case, '基本事件番号': ep_basic, '氏名': ep_name, 'ｼﾒｲ': ep_kana,
+                        '住所': ep_addr, '居所': ep_res,
                         '生年月日': str(ep_dob) if ep_dob else None, '類型': ep_type, '障害類型': ep_disability,
                         '申立人': ep_petitioner, '審判確定日': str(ep_judg) if ep_judg else None,
                         '管轄家裁': ep_court, '家裁報告月': ep_report, '現在の状態': ep_stat

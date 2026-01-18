@@ -2,9 +2,9 @@
 
 MAP_PERSONS = {
     'person_id': 'person_id', 'ケース番号': 'case_number', '基本事件番号': 'basic_case_number',
-    '氏名': 'name', 'ｼﾒｲ': 'kana', '生年月日': 'dob', '類型': 'guardianship_type',
-    '障害類型': 'disability_type', '申立人': 'petitioner', '審判確定日': 'judgment_date',
-    '管轄家裁': 'court', '家裁報告月': 'report_month', '現在の状態': 'status'
+    '氏名': 'name', 'ｼﾒｲ': 'kana', '生年月日': 'dob', '住所': 'address', '居所': 'residence',
+    '類型': 'guardianship_type', '障害類型': 'disability_type', '申立人': 'petitioner',
+    '審判確定日': 'judgment_date', '管轄家裁': 'court', '家裁報告月': 'report_month', '現在の状態': 'status'
 }
 
 MAP_ACTIVITIES = {
