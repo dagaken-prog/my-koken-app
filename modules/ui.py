@@ -416,7 +416,8 @@ def render_related_parties(df_persons, rel_opts):
             
             for _, row in my_rel.iterrows():
                 kp_mark = "★" if str(row.get('キーパーソン', '')).upper() == 'TRUE' else ""
-                label_text = f"{kp_mark}【{row['関係種別']}】 {row['氏名']} ({row['所属・名称']})"
+                phone_disp = f" {row['電話番号']}" if row['電話番号'] else ""
+                label_text = f"{kp_mark}【{row['関係種別']}】 {row['氏名']} ({row['所属・名称']}){phone_disp}"
                 
                 with st.expander(label_text, expanded=False):
                     tel_link = f"[{row['電話番号']}](tel:{row['電話番号']})" if row['電話番号'] else "なし"
