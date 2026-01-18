@@ -99,6 +99,26 @@ def fill_excel_template(template_file, data_dict):
     return output
 
 def render_sidebar():
+    # サイドバー自動クローズロジック
+    if st.session_state.get('close_sidebar_flag'):
+        js = """
+        <script>
+            var sidebar = window.parent.document.querySelector('section[data-testid="stSidebar"]');
+            if (sidebar && sidebar.getAttribute('aria-expanded') === 'true') {
+                var collapse = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]');
+                if (collapse) {
+                    collapse.click();
+                } else {
+                    // モバイル等の場合、Xボタンを探す
+                     var closeBtn = sidebar.querySelector('button[kind="header"]');
+                     if (closeBtn) { closeBtn.click(); }
+                }
+            }
+        </script>
+        """
+        st.markdown(js, unsafe_allow_html=True)
+        st.session_state['close_sidebar_flag'] = False
+
     if 'current_menu' not in st.session_state:
         st.session_state.current_menu = "利用者情報・活動記録"
 
@@ -117,6 +137,7 @@ def render_sidebar():
             display_label = f"👉 {label}" if st.session_state.current_menu == key_val else label
             if st.button(display_label, key=f"menu_btn_{key_val}", use_container_width=True):
                 st.session_state.current_menu = key_val
+                st.session_state['close_sidebar_flag'] = True
                 st.rerun()
     return st.session_state.current_menu
 
