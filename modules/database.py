@@ -3,6 +3,7 @@ import pandas as pd
 from supabase import create_client
 from .constants import MAP_MASTER
 from .utils import to_safe_id
+import time
 
 # --- Supabase接続設定 ---
 def get_supabase_client():
@@ -103,11 +104,15 @@ def insert_data(table_name, data_dict, mapping_dict):
             if val == "": val = None
             db_data[mapping_dict[jp_key]] = val
     try:
+        # print(f"DEBUG: DB Insert -> {table_name}, Data={db_data}")
         client.table(table_name).insert(db_data).execute()
         st.toast("登録しました", icon="✅")
+        time.sleep(1) # DB反映待ち
         st.cache_data.clear()
+        return True
     except Exception as e:
         st.error(f"登録エラー: {e}")
+        return False
 
 def update_data(table_name, id_col_jp, target_id, data_dict, mapping_dict):
     """
@@ -123,9 +128,12 @@ def update_data(table_name, id_col_jp, target_id, data_dict, mapping_dict):
     try:
         client.table(table_name).update(db_data).eq(id_col_en, target_id).execute()
         st.toast("更新しました", icon="✅")
+        time.sleep(1) # DB反映待ち
         st.cache_data.clear()
+        return True
     except Exception as e:
         st.error(f"更新エラー: {e}")
+        return False
 
 def delete_data(table_name, id_col_jp, target_id, mapping_dict):
     """
@@ -136,9 +144,12 @@ def delete_data(table_name, id_col_jp, target_id, mapping_dict):
     try:
         client.table(table_name).delete().eq(id_col_en, target_id).execute()
         st.toast("削除しました", icon="🗑️")
+        time.sleep(1) # DB反映待ち
         st.cache_data.clear()
+        return True
     except Exception as e:
         st.error(f"削除エラー: {e}")
+        return False
 
 def process_import(file_obj, table_name, mapping_dict, id_column=None):
     """

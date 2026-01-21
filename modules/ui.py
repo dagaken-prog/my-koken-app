@@ -240,8 +240,8 @@ def render_activity_log(df_persons, act_opts):
                         '場所': in_place, '所要時間': in_time, '交通費・立替金': in_cost,
                         '重要': in_imp, '要点': input_summary
                     }
-                    insert_data("activities", new_data, MAP_ACTIVITIES)
-                    st.rerun()
+                    if insert_data("activities", new_data, MAP_ACTIVITIES):
+                        st.rerun()
 
         custom_header("過去の活動履歴", help_text="履歴の「詳細・操作」を開くと編集・削除ができます。")
         if not df_activities.empty:
@@ -288,9 +288,9 @@ def render_activity_log(df_persons, act_opts):
                             c_sv, c_cl = st.columns(2)
                             if c_sv.form_submit_button("保存"):
                                 upd_data = {'記録日': str(ed_date), '活動': ed_type, '場所': ed_place, '所要時間': ed_time, '交通費・立替金': ed_cost, '重要': ed_imp, '要点': ed_note}
-                                update_data("activities", "activity_id", st.session_state.edit_activity_id, upd_data, MAP_ACTIVITIES)
-                                st.session_state.edit_activity_id = None
-                                st.rerun()
+                                if update_data("activities", "activity_id", st.session_state.edit_activity_id, upd_data, MAP_ACTIVITIES):
+                                    st.session_state.edit_activity_id = None
+                                    st.rerun()
                             if c_cl.form_submit_button("キャンセル"):
                                 st.session_state.edit_activity_id = None
                                 st.rerun()
@@ -320,9 +320,9 @@ def render_activity_log(df_persons, act_opts):
                             if st.session_state.delete_confirm_id == row['activity_id']:
                                 st.warning("本当に削除しますか？")
                                 if st.button("はい、削除", key=f"yes_act_{row['activity_id']}"):
-                                    delete_data("activities", "activity_id", row['activity_id'], MAP_ACTIVITIES)
-                                    st.session_state.delete_confirm_id = None
-                                    st.rerun()
+                                    if delete_data("activities", "activity_id", row['activity_id'], MAP_ACTIVITIES):
+                                        st.session_state.delete_confirm_id = None
+                                        st.rerun()
             else:
                 if my_acts.empty:
                     st.write("まだ記録がありません。")
@@ -383,9 +383,9 @@ def render_related_parties(df_persons, rel_opts):
                             '電話番号': er_tel, 'e-mail': er_mail, '〒': er_zip, '住所': er_addr, 
                             'キーパーソン': k_str, '連携メモ': er_memo
                         }
-                        update_data("related_parties", "related_id", st.session_state.edit_related_id, upd_dict, MAP_RELATED)
-                        st.session_state.edit_related_id = None
-                        st.rerun()
+                        if update_data("related_parties", "related_id", st.session_state.edit_related_id, upd_dict, MAP_RELATED):
+                            st.session_state.edit_related_id = None
+                            st.rerun()
                     if c_cl.form_submit_button("キャンセル"):
                         st.session_state.edit_related_id = None
                         st.rerun()
@@ -406,8 +406,8 @@ def render_related_parties(df_persons, rel_opts):
                 r_memo = st.text_area("メモ")
                 if st.form_submit_button("登録"):
                     new_data = {'person_id': pid, '関係種別': r_type, '氏名': r_name, '所属・名称': r_org, '電話番号': r_tel, 'e-mail': r_mail, '〒': r_zip, '住所': r_addr, 'キーパーソン': r_kp, '連携メモ': r_memo}
-                    insert_data("related_parties", new_data, MAP_RELATED)
-                    st.rerun()
+                    if insert_data("related_parties", new_data, MAP_RELATED):
+                        st.rerun()
         
         st.markdown("---")
         df_rel = fetch_table("related_parties", MAP_RELATED)
@@ -433,8 +433,8 @@ def render_related_parties(df_persons, rel_opts):
                         st.session_state.edit_related_id = row['related_id']
                         st.rerun()
                     if c_dl.button("削除", key=f"del_rel_{row['related_id']}"):
-                        delete_data("related_parties", "related_id", row['related_id'], MAP_RELATED)
-                        st.rerun()
+                        if delete_data("related_parties", "related_id", row['related_id'], MAP_RELATED):
+                            st.rerun()
         else:
             st.info("登録された関係者はいません。")
 
@@ -471,8 +471,8 @@ def render_assets_management(df_persons, ast_opts):
                 a_rem = st.text_area("備考")
                 if st.form_submit_button("登録"):
                     nd = {'person_id': pid, '財産種別': a_type, '名称・機関名': a_name, '支店・詳細': a_det, '口座番号・記号': a_num, '評価額・残高': a_val, '保管場所': a_loc, '備考': a_rem}
-                    insert_data("assets", nd, MAP_ASSETS)
-                    st.rerun()
+                    if insert_data("assets", nd, MAP_ASSETS):
+                        st.rerun()
         
         st.markdown("---")
         df_assets = fetch_table("assets", MAP_ASSETS)
@@ -495,8 +495,8 @@ def render_assets_management(df_persons, ast_opts):
                         st.session_state.edit_asset_id = row['asset_id']
                         st.rerun()
                     if c_dl.button("削除", key=f"del_ast_{row['asset_id']}"):
-                        delete_data("assets", "asset_id", row['asset_id'], MAP_ASSETS)
-                        st.rerun()
+                        if delete_data("assets", "asset_id", row['asset_id'], MAP_ASSETS):
+                            st.rerun()
 
                 # 編集フォーム（財産）
                 if st.session_state.edit_asset_id == row['asset_id']:
@@ -517,9 +517,9 @@ def render_assets_management(df_persons, ast_opts):
                         c_sv, c_cl = st.columns(2)
                         if c_sv.form_submit_button("保存"):
                             nd = {'財産種別': ea_type, '名称・機関名': ea_name, '支店・詳細': ea_det, '口座番号・記号': ea_num, '評価額・残高': ea_val, '保管場所': ea_loc, '備考': ea_rem}
-                            update_data("assets", "asset_id", st.session_state.edit_asset_id, nd, MAP_ASSETS)
-                            st.session_state.edit_asset_id = None
-                            st.rerun()
+                            if update_data("assets", "asset_id", st.session_state.edit_asset_id, nd, MAP_ASSETS):
+                                st.session_state.edit_asset_id = None
+                                st.rerun()
                         if c_cl.form_submit_button("キャンセル"):
                             st.session_state.edit_asset_id = None
                             st.rerun()
@@ -556,8 +556,8 @@ def render_person_registration(df_persons, guard_opts):
                         '住所': p_addr, '居所': p_res, '生年月日': str(p_dob) if p_dob else None, 
                         '類型': p_type, '現在の状態': "受任中"
                     }
-                    insert_data("persons", nd, MAP_PERSONS)
-                    st.rerun()
+                    if insert_data("persons", nd, MAP_PERSONS):
+                        st.rerun()
     
     if not df_persons.empty:
         st.markdown("### 登録済み一覧")
@@ -627,8 +627,8 @@ def render_person_registration(df_persons, guard_opts):
                         '申立人': ep_petitioner, '審判確定日': str(ep_judg) if ep_judg else None,
                         '管轄家裁': ep_court, '家裁報告月': ep_report, '現在の状態': ep_stat
                     }
-                    update_data("persons", "person_id", target_pid, upd_data, MAP_PERSONS)
-                    st.rerun()
+                    if update_data("persons", "person_id", target_pid, upd_data, MAP_PERSONS):
+                        st.rerun()
 
 def render_reports(df_persons):
     custom_header("帳票作成")
@@ -727,16 +727,16 @@ def render_settings():
                         if usage > 0:
                             st.error(f"「{row['名称']}」は現在 {usage} 件のデータで使用されているため削除できません。")
                         else:
-                            delete_data("master_options", "id", row['id'], MAP_MASTER)
-                            st.rerun()
+                            if delete_data("master_options", "id", row['id'], MAP_MASTER):
+                                st.rerun()
 
             with st.form(f"add_mst_{cat_key}"):
                 c_name = st.text_input("名称")
                 c_order = st.number_input("順序", min_value=0, value=100)
                 if st.form_submit_button("追加"):
                     if c_name:
-                        insert_data("master_options", {'カテゴリ': cat_key, '名称': c_name, '順序': c_order}, MAP_MASTER)
-                        st.rerun()
+                        if insert_data("master_options", {'カテゴリ': cat_key, '名称': c_name, '順序': c_order}, MAP_MASTER):
+                            st.rerun()
     
     st.markdown("---")
     st.markdown("#### システム利用者情報")
@@ -754,7 +754,8 @@ def render_settings():
         if st.form_submit_button("保存"):
             nd = {'氏名': s_name, 'シメイ': s_kana, '〒': s_zip, '住所': s_addr, '連絡先電話番号': s_tel, 'e-mail': s_mail}
             if not df_sys.empty:
-                update_data("app_system_user", "id", curr['id'], nd, MAP_SYSTEM)
+                if update_data("app_system_user", "id", curr['id'], nd, MAP_SYSTEM):
+                    st.rerun()
             else:
-                insert_data("app_system_user", nd, MAP_SYSTEM)
-            st.rerun()
+                if insert_data("app_system_user", nd, MAP_SYSTEM):
+                    st.rerun()
