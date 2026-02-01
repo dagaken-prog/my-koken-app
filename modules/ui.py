@@ -11,10 +11,14 @@ from .utils import calculate_age, to_safe_id
 from .database import (
     fetch_table, insert_data, update_data, delete_data, process_import, check_usage_count
 )
+from .ai import summarize_text
 
 # --- CSSロード ---
 def load_css():
     st.markdown("""
+        <script>
+        document.documentElement.lang = 'ja';
+        </script>
         <style>
         html, body, [class*="css"] { font-family: "Noto Sans JP", sans-serif; color: #333; }
         
@@ -220,28 +224,60 @@ def render_activity_log(df_persons, act_opts):
         
         st.markdown("### 📝 活動記録")
         with st.expander("➕ 新しい活動記録を追加する", expanded=False):
-            with st.form("new_act_form", clear_on_submit=True):
-                # 内容を一番上へ
-                input_summary = st.text_area("内容", height=120)
-                
-                col1, col2 = st.columns(2)
-                in_date = col1.date_input("活動日", datetime.date.today())
-                in_type = col2.selectbox("活動", act_opts)
-                
-                col3, col4, col5, col6 = st.columns(4)
-                in_time = col3.number_input("時間(分)", min_value=0, step=10)
-                in_place = col4.text_input("場所", placeholder="自宅、病院など")
-                in_cost = col5.number_input("費用(円)", min_value=0, step=100)
-                in_imp = col6.checkbox("★重要")
-                
-                if st.form_submit_button("登録"):
-                    new_data = {
-                        'person_id': current_pid, '記録日': str(in_date), '活動': in_type,
-                        '場所': in_place, '所要時間': in_time, '交通費・立替金': in_cost,
-                        '重要': in_imp, '要点': input_summary
-                    }
-                    if insert_data("activities", new_data, MAP_ACTIVITIES):
+            # Session Stateの初期化 (入力保持用)
+            if 'new_act_summary' not in st.session_state: st.session_state.new_act_summary = ""
+            if 'new_act_place' not in st.session_state: st.session_state.new_act_place = ""
+            if 'new_act_time' not in st.session_state: st.session_state.new_act_time = 0
+            if 'new_act_cost' not in st.session_state: st.session_state.new_act_cost = 0
+
+            st.caption("📝 下書きや音声入力したテキストを「内容」に入力し、「🤖 AI要約」ボタンを押すと、活動記録に適した形式に自動整形します。")
+            if st.button("🤖 AI要約実行 (下書きを整形)"):
+                if st.session_state.new_act_summary:
+                    with st.spinner("AIが要約を行っています..."):
+                        summarized = summarize_text(st.session_state.new_act_summary)
+                        st.session_state.new_act_summary = summarized
                         st.rerun()
+                else:
+                    st.warning("まずは「内容」にテキストを入力してください。")
+
+            # 入力フォーム (st.formは使用せず、セッション状態で管理)
+            input_summary = st.text_area("内容", key="new_act_summary", height=120)
+            
+            col1, col2 = st.columns(2)
+            in_date = col1.date_input("活動日", datetime.date.today(), key="new_act_date", format="YYYY/MM/DD")
+            in_type = col2.selectbox("活動", act_opts, key="new_act_type")
+            
+            col3, col4, col5, col6 = st.columns(4)
+            in_time = col3.number_input("時間(分)", min_value=0, step=10, key="new_act_time")
+            in_place = col4.text_input("場所", placeholder="自宅、病院など", key="new_act_place")
+            in_cost = col5.number_input("費用(円)", min_value=0, step=100, key="new_act_cost")
+            in_imp = col6.checkbox("★重要", key="new_act_imp")
+            
+            def on_register_click():
+                if not st.session_state.new_act_summary:
+                    st.toast("内容は必須です", icon="⚠️")
+                    return
+
+                new_data = {
+                    'person_id': current_pid, 
+                    '記録日': str(st.session_state.new_act_date), 
+                    '活動': st.session_state.new_act_type,
+                    '場所': st.session_state.new_act_place, 
+                    '所要時間': st.session_state.new_act_time, 
+                    '交通費・立替金': st.session_state.new_act_cost,
+                    '重要': st.session_state.new_act_imp, 
+                    '要点': st.session_state.new_act_summary
+                }
+                
+                # insert_data内でst.toastが表示される
+                if insert_data("activities", new_data, MAP_ACTIVITIES):
+                    # 入力内容のクリア（コールバック内なら安全にクリア可能）
+                    st.session_state.new_act_summary = ""
+                    st.session_state.new_act_place = ""
+                    st.session_state.new_act_time = 0
+                    st.session_state.new_act_cost = 0
+
+            st.button("登録", type="primary", on_click=on_register_click)
 
         custom_header("過去の活動履歴", help_text="履歴の「詳細・操作」を開くと編集・削除ができます。")
         if not df_activities.empty:
@@ -265,7 +301,7 @@ def render_activity_log(df_persons, act_opts):
                             ed_note = st.text_area("内容", value=edit_row['要点'], height=120)
                             
                             c_d, c_t = st.columns(2)
-                            ed_date = c_d.date_input("活動日", pd.to_datetime(edit_row['記録日']))
+                            ed_date = c_d.date_input("活動日", pd.to_datetime(edit_row['記録日']), format="YYYY/MM/DD")
                             try:
                                 idx = act_opts.index(edit_row['活動'])
                             except:
@@ -544,7 +580,7 @@ def render_person_registration(df_persons, guard_opts):
             p_res = st.text_input("居所 (施設名など)")
             
             col_dob, col_typ = st.columns(2)
-            p_dob = col_dob.date_input("生年月日", value=None, min_value=datetime.date(1900, 1, 1))
+            p_dob = col_dob.date_input("生年月日", value=None, min_value=datetime.date(1900, 1, 1), format="YYYY/MM/DD")
             p_type = col_typ.selectbox("類型", guard_opts)
             
             if st.form_submit_button("登録"):
@@ -594,7 +630,7 @@ def render_person_registration(df_persons, guard_opts):
                 col_dob, col_typ = st.columns(2)
                 
                 ep_dob_val = pd.to_datetime(edit_row['生年月日']).date() if pd.notnull(edit_row.get('生年月日')) and edit_row['生年月日'] else None
-                ep_dob = col_dob.date_input("生年月日", value=ep_dob_val, min_value=datetime.date(1900, 1, 1))
+                ep_dob = col_dob.date_input("生年月日", value=ep_dob_val, min_value=datetime.date(1900, 1, 1), format="YYYY/MM/DD")
                 
                 try: g_idx = guard_opts.index(edit_row.get('類型'))
                 except: g_idx = 0
@@ -609,7 +645,7 @@ def render_person_registration(df_persons, guard_opts):
                 
                 c_jud, c_crt = st.columns(2)
                 ep_judg_val = pd.to_datetime(edit_row['審判確定日']).date() if pd.notnull(edit_row.get('審判確定日')) and edit_row['審判確定日'] else None
-                ep_judg = c_jud.date_input("審判確定日", value=ep_judg_val, min_value=datetime.date(1900, 1, 1))
+                ep_judg = c_jud.date_input("審判確定日", value=ep_judg_val, min_value=datetime.date(1900, 1, 1), format="YYYY/MM/DD")
                 ep_court = c_crt.text_input("管轄家裁", value=edit_row.get('管轄家裁') or "")
                 
                 c_rep, c_st = st.columns(2)
