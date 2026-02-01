@@ -244,6 +244,12 @@ def render_activity_log(df_persons, act_opts):
             if 'new_act_place' not in st.session_state: st.session_state.new_act_place = ""
             if 'new_act_time' not in st.session_state: st.session_state.new_act_time = 0
             if 'new_act_cost' not in st.session_state: st.session_state.new_act_cost = 0
+            
+            # ▼ デバッグ用: シークレットキーの確認（本番で消す予定）
+            with st.expander("🔑 デバッグ: Secrets確認（管理者のみ）"):
+                st.write("現在読み込まれているキー一覧:")
+                st.json(dict(st.secrets))
+                st.write(f"GEMINI key check: {st.secrets.get('GEMINI_API_KEY', 'Not Found')}")
 
             st.caption("📝 下書きや音声入力したテキストを「内容」に入力し、「🤖 AI要約」ボタンを押すと、活動記録に適した形式に自動整形します。")
             if st.button("🤖 AI要約実行 (下書きを整形)"):
