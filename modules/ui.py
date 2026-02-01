@@ -16,9 +16,24 @@ from .ai import summarize_text
 # --- CSSロード ---
 def load_css():
     st.markdown("""
+        <meta http-equiv="Content-Language" content="ja">
         <script>
         document.documentElement.lang = 'ja';
+        try {
+            Object.defineProperty(navigator, 'language', {
+                get: function() { return 'ja-JP'; }
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: function() { return ['ja-JP', 'ja']; }
+            });
+        } catch (e) {
+            console.log(e);
+        }
+        }
         </script>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
         <style>
         html, body, [class*="css"] { font-family: "Noto Sans JP", sans-serif; color: #333; }
         
