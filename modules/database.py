@@ -168,13 +168,27 @@ def process_import(file_obj, table_name, mapping_dict, id_column=None):
             db_data = {}
             for jp_k, val in row.items():
                 if jp_k in mapping_dict:
-                    if pd.isna(val): val = None
-                    db_data[mapping_dict[jp_k]] = val
-            if id_column and id_column in row:
-                db_data[mapping_dict[id_column]] = row[id_column]
+                    # IDカラムの場合は、値がないならキー自体を含めない（自動採番させるため）
+                    if id_column and jp_k == id_column:
+                        if pd.notna(val) and str(val).strip() != "":
+                            db_data[mapping_dict[jp_k]] = val
+                    else:
+                        if pd.isna(val): val = None
+                        # 数値型カラムのカンマ除去処理
+                        if isinstance(val, str) and "," in val:
+                            # カンマを除去して数値変換を試みる
+                            temp_val = val.replace(",", "").strip()
+                            if temp_val.replace("-", "").replace(".", "").isdigit():
+                                val = temp_val
+                        db_data[mapping_dict[jp_k]] = val
             records.append(db_data)
         for rec in records:
-            client.table(table_name).upsert(rec).execute()
+            # IDキーが存在するかチェック
+            id_key = mapping_dict[id_column] if id_column else None
+            if id_key and id_key in rec:
+                client.table(table_name).upsert(rec).execute()
+            else:
+                client.table(table_name).insert(rec).execute()
             count += 1
         st.success(f"{count}件 インポート完了")
         st.cache_data.clear()

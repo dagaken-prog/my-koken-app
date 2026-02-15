@@ -41,3 +41,46 @@ R_MAP_ACTIVITIES = {v: k for k, v in MAP_ACTIVITIES.items()}
 R_MAP_ASSETS = {v: k for k, v in MAP_ASSETS.items()}
 R_MAP_RELATED = {v: k for k, v in MAP_RELATED.items()}
 R_MAP_SYSTEM = {v: k for k, v in MAP_SYSTEM.items()}
+
+# 帳票作成用マッピング
+EXCEL_TEMPLATE_PATH = "template_report.xlsx"
+SHEET_REPORT = "後見事務報告書(定期報告)"
+SHEET_ASSETS = "財産目録"
+
+# 基本情報セル (後見事務報告書シート)
+CELL_REPORT_NAME_KANA = "V4"    # フリガナ
+CELL_REPORT_NAME = "V5"         # 本人氏名
+CELL_REPORT_ADDRESS = "S1"      # 本人住所
+CELL_REPORT_POSTAL = "N1"       # 〒
+CELL_REPORT_RESIDENCE = "S2"    # 本人居所
+CELL_REPORT_RES_POSTAL = "N2"   # 居所〒
+
+CELL_REPORT_PERIOD_START = "J11" # 報告対象期間開始
+CELL_REPORT_PERIOD_END = "R11"   # 報告対象期間終了
+CELL_REPORT_CREATE_DATE = "L13"  # 作成日
+
+CELL_GUARDIAN_ADDRESS = "O14"    # 後見人住所
+CELL_GUARDIAN_NAME = "O16"       # 後見人氏名
+CELL_GUARDIAN_PHONE = "R17"      # 後見人電話番号
+
+# 財産目録シート
+CELL_ASSET_NAME = "W2"           # 財産目録シートの本人氏名
+
+CELL_ASSET_CASH_VAL = "X37"      # 現金
+CELL_ASSET_FACILITY_VAL = "X38"  # 施設等預入金
+
+# 財産リスト開始行
+ROW_ASSET_BANK_START = 25       # 預貯金開始行
+ROW_ASSET_SHIEN_START = 40      # 支援信託・支援預貯金
+ROW_ASSET_OTHER_START = 49      # 有価証券等
+
+# 預貯金カラム定義 (列オフセット 0=A)
+# B=1, C=2, I=8, M=12, N=13, O=14, P=15, Q=16, U=20, X=23, AB=27, AF=31
+COL_BANK_NAME = 3         # C: 金融機関名
+COL_BANK_BRANCH = 9       # I: 支店名
+COL_BANK_TYPE_FUTSU = 14  # N: 普通 (Check box)
+COL_BANK_TYPE_TEIKI = 16  # P: 定期 (Check box)
+COL_BANK_NUMBER = 17      # Q: 口座番号
+COL_BANK_DATE = 21        # U: 最終確認日
+COL_BANK_VALUE = 24       # X: 残高
+COL_BANK_ADMIN = 28       # AB: 管理者

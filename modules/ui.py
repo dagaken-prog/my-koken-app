@@ -4,6 +4,7 @@ import datetime
 import io
 import openpyxl
 import re
+import time
 from .constants import (
     MAP_PERSONS, MAP_ACTIVITIES, MAP_ASSETS, MAP_RELATED, MAP_SYSTEM, MAP_MASTER
 )
@@ -12,6 +13,7 @@ from .database import (
     fetch_table, insert_data, update_data, delete_data, process_import, check_usage_count
 )
 from .ai import summarize_text
+from .report_generator import create_periodic_report
 
 # --- CSSロード ---
 def load_css():
@@ -76,7 +78,7 @@ def load_css():
         .custom-header-text { font-size: 16px; font-weight: bold; color: #006633; margin: 0; padding-top: 5px; white-space: nowrap; }
         .custom-header-line { border-bottom: 1px solid #ccc; margin: 0 0 5px 0; }
         
-        .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input { border: 1px solid #666 !important; background-color: #fff !important; border-radius: 6px !important; padding: 8px 8px !important; font-size: 14px !important; }
+        .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div, .stTextArea textarea, .stNumberInput input { border: 1px solid #666 !important; background-color: #fff !important; color: #333 !important; border-radius: 6px !important; padding: 8px 8px !important; font-size: 14px !important; }
         .stSelectbox div[data-baseweb="select"] > div { height: auto !important; min-height: 40px !important; }
         .stTextInput label, .stSelectbox label, .stDateInput label, .stTextArea label, .stNumberInput label, .stCheckbox label { margin-bottom: 2px !important; font-size: 13px !important; font-weight: bold; }
         
@@ -239,64 +241,71 @@ def render_activity_log(df_persons, act_opts):
         
         st.markdown("### 📝 活動記録")
         with st.expander("➕ 新しい活動記録を追加する", expanded=False):
-            # Session Stateの初期化 (入力保持用)
+            # Session Stateの初期化
+            if 'new_act_content' not in st.session_state: st.session_state.new_act_content = ""
             if 'new_act_summary' not in st.session_state: st.session_state.new_act_summary = ""
-            if 'new_act_place' not in st.session_state: st.session_state.new_act_place = ""
-            if 'new_act_time' not in st.session_state: st.session_state.new_act_time = 0
             if 'new_act_cost' not in st.session_state: st.session_state.new_act_cost = 0
+            if 'new_act_deduct_cash' not in st.session_state: st.session_state.new_act_deduct_cash = True
             
-            # ▼ デバッグ用: シークレットキーの確認（本番で消す予定）
-            with st.expander("🔑 デバッグ: Secrets確認（管理者のみ）"):
-                st.write("現在読み込まれているキー一覧:")
-                st.json(dict(st.secrets))
-                st.write(f"GEMINI key check: {st.secrets.get('GEMINI_API_KEY', 'Not Found')}")
-
-            st.caption("📝 下書きや音声入力したテキストを「内容」に入力し、「🤖 AI要約」ボタンを押すと、活動記録に適した形式に自動整形します。")
-            if st.button("🤖 AI要約実行 (下書きを整形)"):
-                if st.session_state.new_act_summary:
+            if st.button("🤖 AI要約実行 (活動内容を整形)"):
+                if st.session_state.new_act_content:
                     with st.spinner("AIが要約を行っています..."):
-                        summarized = summarize_text(st.session_state.new_act_summary)
+                        summarized = summarize_text(st.session_state.new_act_content)
                         st.session_state.new_act_summary = summarized
                         st.rerun()
                 else:
-                    st.warning("まずは「内容」にテキストを入力してください。")
+                    st.warning("まずは「活動内容」を入力してください。")
 
-            # 入力フォーム (st.formは使用せず、セッション状態で管理)
-            input_summary = st.text_area("内容", key="new_act_summary", height=120)
+            # 入力フォーム
+            st.text_area("活動内容", key="new_act_content", height=100, help="詳細な活動内容を入力してください。AI要約を使うと、ここから「摘要」を自動生成します。")
             
             col1, col2 = st.columns(2)
             in_date = col1.date_input("活動日", datetime.date.today(), key="new_act_date", format="YYYY/MM/DD")
             in_type = col2.selectbox("活動", act_opts, key="new_act_type")
             
-            col3, col4, col5, col6 = st.columns(4)
-            in_time = col3.number_input("時間(分)", min_value=0, step=10, key="new_act_time")
-            in_place = col4.text_input("場所", placeholder="自宅、病院など", key="new_act_place")
-            in_cost = col5.number_input("費用(円)", min_value=0, step=100, key="new_act_cost")
-            in_imp = col6.checkbox("★重要", key="new_act_imp")
+            c_cost, c_sum, c_deduct, c_imp = st.columns([1, 2, 1, 0.8])
+            in_cost = c_cost.number_input("費用(円)", min_value=0, step=100, key="new_act_cost")
+            in_summary = c_sum.text_input("摘要 (必須)", key="new_act_summary", help="小口現金出納帳などに表示される短い説明です。")
+            in_deduct = c_deduct.checkbox("小口支払い", key="new_act_deduct_cash", help="チェックすると小口現金出納帳の「出金」にも記録されます")
+            in_imp = c_imp.checkbox("★重要", key="new_act_imp")
             
             def on_register_click():
                 if not st.session_state.new_act_summary:
-                    st.toast("内容は必須です", icon="⚠️")
+                    st.toast("摘要は必須です", icon="⚠️")
                     return
 
                 new_data = {
                     'person_id': current_pid, 
                     '記録日': str(st.session_state.new_act_date), 
                     '活動': st.session_state.new_act_type,
-                    '場所': st.session_state.new_act_place, 
-                    '所要時間': st.session_state.new_act_time, 
+                    '場所': st.session_state.new_act_summary, # 場所カラムに摘要を格納
+                    '所要時間': 0,
                     '交通費・立替金': st.session_state.new_act_cost,
                     '重要': st.session_state.new_act_imp, 
-                    '要点': st.session_state.new_act_summary
+                    '要点': st.session_state.new_act_content  # 要点カラムに活動内容を格納
                 }
                 
                 # insert_data内でst.toastが表示される
                 if insert_data("activities", new_data, MAP_ACTIVITIES):
-                    # 入力内容のクリア（コールバック内なら安全にクリア可能）
+                    # 小口現金への連動
+                    if st.session_state.new_act_deduct_cash and st.session_state.new_act_cost > 0:
+                        cash_data = {
+                            'person_id': current_pid, 
+                            '記録日': str(st.session_state.new_act_date), 
+                            '活動': '出金', 
+                            '所要時間': 0,
+                            '交通費・立替金': st.session_state.new_act_cost,
+                            '重要': False,
+                            '要点': f"{st.session_state.new_act_summary} (活動記録より)",
+                            '場所': '現金出納'
+                        }
+                        insert_data("activities", cash_data, MAP_ACTIVITIES)
+
+                    # 入力内容のクリア
+                    st.session_state.new_act_content = ""
                     st.session_state.new_act_summary = ""
-                    st.session_state.new_act_place = ""
-                    st.session_state.new_act_time = 0
                     st.session_state.new_act_cost = 0
+                    # st.session_state.new_act_deduct_cash はデフォルトTrueのまま維持
 
             st.button("登録", type="primary", on_click=on_register_click)
 
@@ -314,72 +323,94 @@ def render_activity_log(df_persons, act_opts):
                 else:
                     my_acts = my_acts.sort_values('記録日', ascending=False)
                 
-                if st.session_state.edit_activity_id:
-                    edit_row = my_acts[my_acts['activity_id'] == st.session_state.edit_activity_id].iloc[0]
-                    with st.container(border=True):
-                        st.markdown(f"#### ✏️ 修正")
-                        with st.form("edit_act_form"):
-                            ed_note = st.text_area("内容", value=edit_row['要点'], height=120)
-                            
-                            c_d, c_t = st.columns(2)
-                            ed_date = c_d.date_input("活動日", pd.to_datetime(edit_row['記録日']), format="YYYY/MM/DD")
-                            try:
-                                idx = act_opts.index(edit_row['活動'])
-                            except:
-                                idx = 0
-                            ed_type = c_t.selectbox("活動", act_opts, index=idx)
-                            
-                            c3, c4, c5, c6 = st.columns(4)
-                            val_time = edit_row.get('所要時間')
-                            if pd.isna(val_time) or val_time == "": val_time = 0
-                            ed_time = c3.number_input("時間", value=int(val_time), min_value=0, step=10)
-
-                            ed_place = c4.text_input("場所", value=str(edit_row.get('場所') or ""))
-
-                            val_cost = edit_row.get('交通費・立替金')
-                            if pd.isna(val_cost) or val_cost == "": val_cost = 0
-                            ed_cost = c5.number_input("費用", value=int(val_cost), min_value=0, step=100)
-                            
-                            ed_imp = c6.checkbox("重要", value=bool(edit_row['重要']))
-                            
-                            c_sv, c_cl = st.columns(2)
-                            if c_sv.form_submit_button("保存"):
-                                upd_data = {'記録日': str(ed_date), '活動': ed_type, '場所': ed_place, '所要時間': ed_time, '交通費・立替金': ed_cost, '重要': ed_imp, '要点': ed_note}
-                                if update_data("activities", "activity_id", st.session_state.edit_activity_id, upd_data, MAP_ACTIVITIES):
-                                    st.session_state.edit_activity_id = None
-                                    st.rerun()
-                            if c_cl.form_submit_button("キャンセル"):
-                                st.session_state.edit_activity_id = None
-                                st.rerun()
-
                 for _, row in my_acts.iterrows():
                     star = "★" if row['重要'] else ""
                     with st.container(border=True):
-                        summary = row.get('要点', '') or ''
-                        label_text = f"{star} {row['記録日']} | {summary}"
-                        
-                        with st.expander(label_text, expanded=False):
-                            st.markdown(f"**活動種別:** {row['活動']}")
-                            st.markdown(f"""
-                            - **場所:** {row.get('場所') or '-'}
-                            - **時間:** {row.get('所要時間') or '0'} 分
-                            - **費用:** {row.get('交通費・立替金') or '0'} 円
-                            """)
-                            st.markdown("---")
-                            c_ed, c_dl = st.columns(2)
-                            if c_ed.button("編集", key=f"ed_act_{row['activity_id']}"):
-                                st.session_state.edit_activity_id = row['activity_id']
-                                st.rerun()
-                            if c_dl.button("削除", key=f"dl_act_{row['activity_id']}"):
-                                st.session_state.delete_confirm_id = row['activity_id']
-                                st.rerun()
-                            
-                            if st.session_state.delete_confirm_id == row['activity_id']:
-                                st.warning("本当に削除しますか？")
-                                if st.button("はい、削除", key=f"yes_act_{row['activity_id']}"):
-                                    if delete_data("activities", "activity_id", row['activity_id'], MAP_ACTIVITIES):
-                                        st.session_state.delete_confirm_id = None
+                        # 編集モードの場合、インラインでフォームを表示
+                        if st.session_state.edit_activity_id == row['activity_id']:
+                            st.markdown(f"#### ✏️ 修正")
+                            with st.form(f"edit_act_form_{row['activity_id']}"):
+                                # 活動内容 (要点カラム)
+                                ed_content = st.text_area("活動内容", value=row.get('要点', ''), height=100, key=f"ed_content_{row['activity_id']}")
+
+                                c_d, c_t = st.columns(2)
+                                ed_date = c_d.date_input("活動日", pd.to_datetime(row['記録日']), format="YYYY/MM/DD", key=f"ed_date_{row['activity_id']}")
+                                try:
+                                    idx = act_opts.index(row['活動'])
+                                except:
+                                    idx = 0
+                                ed_type = c_t.selectbox("活動", act_opts, index=idx, key=f"ed_type_{row['activity_id']}")
+                                
+                                c_cost, c_sum, c_deduct, c_imp = st.columns([1, 2, 1, 0.8])
+                                
+                                val_cost = row.get('交通費・立替金')
+                                if pd.isna(val_cost) or val_cost == "": val_cost = 0
+                                ed_cost = c_cost.number_input("費用", value=int(val_cost), min_value=0, step=100, key=f"ed_cost_{row['activity_id']}")
+                                
+                                # 摘要 (場所カラムを使用)
+                                ed_summary = c_sum.text_input("摘要", value=str(row.get('場所') or ''), key=f"ed_sum_{row['activity_id']}")
+
+                                ed_deduct = c_deduct.checkbox("小口反映", help="チェックして保存すると、この費用を小口現金の「出金」として新規追加します", key=f"ed_deduct_{row['activity_id']}")
+                                ed_imp = c_imp.checkbox("重要", value=bool(row['重要']), key=f"ed_imp_{row['activity_id']}")
+                                
+                                c_sv, c_cl = st.columns(2)
+                                if c_sv.form_submit_button("保存"):
+                                    upd_data = {
+                                        '記録日': str(ed_date), 
+                                        '活動': ed_type, 
+                                        '交通費・立替金': ed_cost, 
+                                        '重要': ed_imp, 
+                                        '要点': ed_content, # 活動内容
+                                        '場所': ed_summary  # 摘要
+                                    }
+                                    if update_data("activities", "activity_id", row['activity_id'], upd_data, MAP_ACTIVITIES):
+                                        # 小口現金への反映（新規追加）
+                                        if ed_deduct and ed_cost > 0:
+                                            cash_data = {
+                                                'person_id': current_pid, 
+                                                '記録日': str(ed_date), 
+                                                '活動': '出金', 
+                                                '所要時間': 0,
+                                                '交通費・立替金': ed_cost,
+                                                '重要': False,
+                                                '要点': f"{ed_summary} (活動記録修正より)",
+                                                '場所': '現金出納'
+                                            }
+                                            insert_data("activities", cash_data, MAP_ACTIVITIES)
+                                        
+                                        st.session_state.edit_activity_id = None
                                         st.rerun()
+                                if c_cl.form_submit_button("キャンセル"):
+                                    st.session_state.edit_activity_id = None
+                                    st.rerun()
+
+                        else:
+                            # 閲覧モード
+                            summary = row.get('要点', '') or ''
+                            label_text = f"{star} {row['記録日']} | {summary}"
+                            
+                            with st.expander(label_text, expanded=False):
+                                st.markdown(f"**活動種別:** {row['活動']}")
+                                st.markdown(f"""
+                                - **場所:** {row.get('場所') or '-'}
+                                - **時間:** {row.get('所要時間') or '0'} 分
+                                - **費用:** {row.get('交通費・立替金') or '0'} 円
+                                """)
+                                st.markdown("---")
+                                c_ed, c_dl = st.columns(2)
+                                if c_ed.button("編集", key=f"ed_act_{row['activity_id']}"):
+                                    st.session_state.edit_activity_id = row['activity_id']
+                                    st.rerun()
+                                if c_dl.button("削除", key=f"dl_act_{row['activity_id']}"):
+                                    st.session_state.delete_confirm_id = row['activity_id']
+                                    st.rerun()
+                                
+                                if st.session_state.delete_confirm_id == row['activity_id']:
+                                    st.warning("本当に削除しますか？")
+                                    if st.button("はい、削除", key=f"yes_act_{row['activity_id']}"):
+                                        if delete_data("activities", "activity_id", row['activity_id'], MAP_ACTIVITIES):
+                                            st.session_state.delete_confirm_id = None
+                                            st.rerun()
             else:
                 if my_acts.empty:
                     st.write("まだ記録がありません。")
@@ -515,73 +546,242 @@ def render_assets_management(df_persons, ast_opts):
         if pid != st.session_state.selected_person_id:
             st.session_state.selected_person_id = pid
         pid = person_opts[target_name]
-        with st.expander("➕ 財産追加", expanded=False):
-            with st.form("new_asset"):
-                c1, c2 = st.columns(2)
-                a_type = c1.selectbox("種別", ast_opts)
-                a_name = c2.text_input("名称")
-                c3, c4 = st.columns(2)
-                a_det = c3.text_input("詳細")
-                a_num = c4.text_input("口座番号等")
-                a_val = c1.text_input("評価額")
-                a_loc = c2.text_input("保管場所")
-                a_rem = st.text_area("備考")
-                if st.form_submit_button("登録"):
-                    nd = {'person_id': pid, '財産種別': a_type, '名称・機関名': a_name, '支店・詳細': a_det, '口座番号・記号': a_num, '評価額・残高': a_val, '保管場所': a_loc, '備考': a_rem}
-                    if insert_data("assets", nd, MAP_ASSETS):
-                        st.rerun()
+        if 'am_tab' not in st.session_state: st.session_state.am_tab = "財産目録"
         
+        # タブ切り替え（リロード対策でradioボタンを使用）
+        st.session_state.am_tab = st.radio("表示切り替え", ["財産目録", "小口現金出納帳"], index=["財産目録", "小口現金出納帳"].index(st.session_state.am_tab), horizontal=True, label_visibility="collapsed")
         st.markdown("---")
-        df_assets = fetch_table("assets", MAP_ASSETS)
-        if not df_assets.empty:
-            df_assets['safe_pid'] = df_assets['person_id'].apply(to_safe_id)
-            current_pid_safe = to_safe_id(pid)
-            my_assets = df_assets[df_assets['safe_pid'] == current_pid_safe]
-            
-            for _, row in my_assets.iterrows():
-                label_text = f"【{row['財産種別']}】 {row['名称・機関名']} ({row['評価額・残高']})"
-                with st.expander(label_text, expanded=False):
-                    st.markdown(f"""
-                    - **詳細:** {row['支店・詳細']}
-                    - **番号:** {row['口座番号・記号']}
-                    - **場所:** {row['保管場所']}
-                    - **備考:** {row['備考']}
-                    """)
-                    c_ed, c_dl = st.columns(2)
-                    if c_ed.button("編集", key=f"ast_edit_{row['asset_id']}"):
-                        st.session_state.edit_asset_id = row['asset_id']
-                        st.rerun()
-                    if c_dl.button("削除", key=f"del_ast_{row['asset_id']}"):
-                        if delete_data("assets", "asset_id", row['asset_id'], MAP_ASSETS):
-                            st.rerun()
 
-                # 編集フォーム（財産）
-                if st.session_state.edit_asset_id == row['asset_id']:
-                    st.markdown(f"#### ✏️ 編集: {row['名称・機関名']}")
-                    with st.form("edit_asset_form"):
-                        c1, c2 = st.columns(2)
-                        try: idx = ast_opts.index(row['財産種別'])
-                        except: idx = 0
-                        ea_type = c1.selectbox("種別", ast_opts, index=idx)
-                        ea_name = c2.text_input("名称", value=row['名称・機関名'])
-                        c3, c4 = st.columns(2)
-                        ea_det = c3.text_input("詳細", value=row['支店・詳細'])
-                        ea_num = c4.text_input("口座番号等", value=row['口座番号・記号'])
-                        ea_val = c1.text_input("評価額", value=row['評価額・残高'])
-                        ea_loc = c2.text_input("保管場所", value=row['保管場所'])
-                        ea_rem = st.text_area("備考", value=row['備考'])
-                        
-                        c_sv, c_cl = st.columns(2)
-                        if c_sv.form_submit_button("保存"):
-                            nd = {'財産種別': ea_type, '名称・機関名': ea_name, '支店・詳細': ea_det, '口座番号・記号': ea_num, '評価額・残高': ea_val, '保管場所': ea_loc, '備考': ea_rem}
-                            if update_data("assets", "asset_id", st.session_state.edit_asset_id, nd, MAP_ASSETS):
+        if st.session_state.am_tab == "財産目録":
+            with st.expander("➕ 財産追加", expanded=False):
+                with st.form("new_asset"):
+                    c1, c2 = st.columns(2)
+                    a_type = c1.selectbox("種別", ast_opts)
+                    a_name = c2.text_input("名称")
+                    c3, c4 = st.columns(2)
+                    a_det = c3.text_input("詳細")
+                    a_num = c4.text_input("口座番号等")
+                    a_val = c1.text_input("評価額")
+                    a_loc = c2.text_input("保管場所")
+                    a_rem = st.text_area("備考")
+                    if st.form_submit_button("登録"):
+                        nd = {'person_id': pid, '財産種別': a_type, '名称・機関名': a_name, '支店・詳細': a_det, '口座番号・記号': a_num, '評価額・残高': a_val, '保管場所': a_loc, '備考': a_rem}
+                        if insert_data("assets", nd, MAP_ASSETS):
+                            st.rerun()
+            
+            st.markdown("### 財産目録") # ヘッダー追加
+            df_assets = fetch_table("assets", MAP_ASSETS)
+            if not df_assets.empty:
+                df_assets['safe_pid'] = df_assets['person_id'].apply(to_safe_id)
+                current_pid_safe = to_safe_id(pid)
+                my_assets = df_assets[df_assets['safe_pid'] == current_pid_safe]
+                
+                for _, row in my_assets.iterrows():
+                    label_text = f"【{row['財産種別']}】 {row['名称・機関名']} ({row['評価額・残高']})"
+                    with st.expander(label_text, expanded=False):
+                        st.markdown(f"""
+                        - **詳細:** {row['支店・詳細']}
+                        - **番号:** {row['口座番号・記号']}
+                        - **場所:** {row['保管場所']}
+                        - **備考:** {row['備考']}
+                        """)
+                        c_ed, c_dl = st.columns(2)
+                        if c_ed.button("編集", key=f"ast_edit_{row['asset_id']}"):
+                            st.session_state.edit_asset_id = row['asset_id']
+                            st.rerun()
+                        if c_dl.button("削除", key=f"del_ast_{row['asset_id']}"):
+                            if delete_data("assets", "asset_id", row['asset_id'], MAP_ASSETS):
+                                st.rerun()
+
+                    # 編集フォーム（財産）
+                    if st.session_state.edit_asset_id == row['asset_id']:
+                        st.markdown(f"#### ✏️ 編集: {row['名称・機関名']}")
+                        with st.form("edit_asset_form"):
+                            c1, c2 = st.columns(2)
+                            try: idx = ast_opts.index(row['財産種別'])
+                            except: idx = 0
+                            ea_type = c1.selectbox("種別", ast_opts, index=idx)
+                            ea_name = c2.text_input("名称", value=row['名称・機関名'])
+                            c3, c4 = st.columns(2)
+                            ea_det = c3.text_input("詳細", value=row['支店・詳細'])
+                            ea_num = c4.text_input("口座番号等", value=row['口座番号・記号'])
+                            ea_val = c1.text_input("評価額", value=row['評価額・残高'])
+                            ea_loc = c2.text_input("保管場所", value=row['保管場所'])
+                            ea_rem = st.text_area("備考", value=row['備考'])
+                            
+                            c_sv, c_cl = st.columns(2)
+                            if c_sv.form_submit_button("保存"):
+                                nd = {'財産種別': ea_type, '名称・機関名': ea_name, '支店・詳細': ea_det, '口座番号・記号': ea_num, '評価額・残高': ea_val, '保管場所': ea_loc, '備考': ea_rem}
+                                if update_data("assets", "asset_id", st.session_state.edit_asset_id, nd, MAP_ASSETS):
+                                    st.session_state.edit_asset_id = None
+                                    st.rerun()
+                            if c_cl.form_submit_button("キャンセル"):
                                 st.session_state.edit_asset_id = None
                                 st.rerun()
-                        if c_cl.form_submit_button("キャンセル"):
-                            st.session_state.edit_asset_id = None
+            else:
+                st.info("登録された財産はありません。")
+
+        elif st.session_state.am_tab == "小口現金出納帳":
+            st.markdown("### 💰 小口現金出納帳")
+            st.caption("日々の現金管理（入金・出金）を記録します。")
+            
+            # データ取得と計算
+            df_act = fetch_table("activities", MAP_ACTIVITIES)
+            balance = 0
+            my_cash_logs = pd.DataFrame()
+
+            if not df_act.empty:
+                df_act['safe_pid'] = df_act['person_id'].apply(to_safe_id)
+                current_pid_safe = to_safe_id(pid)
+                # 入金・出金のみ抽出
+                mask = (df_act['safe_pid'] == current_pid_safe) & (df_act['活動'].isin(['入金', '出金']))
+                my_cash_logs = df_act[mask].copy()
+                
+                if not my_cash_logs.empty:
+                    # 日付順でソート
+                    my_cash_logs['記録日'] = pd.to_datetime(my_cash_logs['記録日'])
+                    if '作成日時' in my_cash_logs.columns:
+                        my_cash_logs['作成日時'] = pd.to_datetime(my_cash_logs['作成日時'], errors='coerce')
+                        my_cash_logs = my_cash_logs.sort_values(by=['記録日', '作成日時'], ascending=[True, True])
+                    else:
+                        my_cash_logs = my_cash_logs.sort_values(by='記録日', ascending=True)
+
+                    # 残高計算
+                    ttl_in = my_cash_logs[my_cash_logs['活動'] == '入金']['交通費・立替金'].sum()
+                    ttl_out = my_cash_logs[my_cash_logs['活動'] == '出金']['交通費・立替金'].sum()
+                    balance = ttl_in - ttl_out
+            
+            # 残高表示
+            st.metric("現在残高 (現金)", f"¥{int(balance):,}")
+            
+            # 入力フォーム
+            with st.container(border=True):
+                st.markdown("#### 新規記帳")
+                with st.form("cash_entry"):
+                    c_date, c_type = st.columns(2)
+                    e_date = c_date.date_input("日付", datetime.date.today(), key="cash_date")
+                    e_type = c_type.radio("区分", ["出金", "入金"], horizontal=True, key="cash_type")
+                    
+                    c_amt, c_text = st.columns([1, 2])
+                    e_amt = c_amt.number_input("金額", min_value=0, step=100, key="cash_amt")
+                    e_text = c_text.text_input("摘要 (用途・相手先など)", key="cash_text")
+                    
+                    if st.form_submit_button("記帳する", type="primary"):
+                        if e_amt <= 0:
+                            st.error("金額を入力してください")
+                        elif not e_text:
+                            st.error("摘要を入力してください")
+                        else:
+                            # DB登録
+                            new_cash_data = {
+                                'person_id': pid,
+                                '記録日': str(e_date),
+                                '活動': e_type,
+                                '所要時間': 0,
+                                '交通費・立替金': int(e_amt),
+                                '重要': False,
+                                '要点': e_text,
+                                '場所': '現金出納' # 識別用タグとして利用
+                            }
+                            if insert_data("activities", new_cash_data, MAP_ACTIVITIES):
+                                st.rerun()
+
+            # 履歴表示
+            if not my_cash_logs.empty:
+                st.markdown("#### 履歴")
+                
+                # 表示用データフレーム作成
+                disp_logs = my_cash_logs.copy()
+                
+                # 残高計算
+                disp_logs['signed_amount'] = disp_logs.apply(
+                    lambda x: x['交通費・立替金'] if x['活動'] == '入金' else -x['交通費・立替金'], axis=1
+                )
+                disp_logs['balance'] = disp_logs['signed_amount'].cumsum()
+
+                disp_logs['日付'] = disp_logs['記録日'].dt.strftime('%Y/%m/%d')
+                disp_logs['入金'] = disp_logs.apply(lambda x: f"¥{int(x['交通費・立替金']):,}" if x['活動'] == '入金' else "-", axis=1)
+                disp_logs['出金'] = disp_logs.apply(lambda x: f"¥{int(x['交通費・立替金']):,}" if x['活動'] == '出金' else "-", axis=1)
+                disp_logs['残高'] = disp_logs['balance'].apply(lambda x: f"¥{int(x):,}")
+                disp_logs['摘要'] = disp_logs['要点']
+                
+                # テーブル表示
+                st.dataframe(
+                    disp_logs[['日付', '入金', '出金', '残高', '摘要']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # 削除機能（簡易版）
+                # 修正・削除機能
+                if 'edit_cash_id' not in st.session_state: st.session_state.edit_cash_id = None
+
+                with st.expander("修正・削除"):
+                    # 編集対象の選択
+                    act_opts_edit = {f"{row['日付']} {row['活動']} {row['摘要']} (¥{row['交通費・立替金']:,})": row['activity_id'] for _, row in disp_logs.sort_values('記録日', ascending=False).iterrows()}
+                    
+                    # セレクトボックスで対象を選択（デフォルトは選択なし）
+                    selected_edit_label = st.selectbox("修正・削除する項目を選択", ["(選択してください)"] + list(act_opts_edit.keys()), key="sel_cash_edit")
+                    
+                    if selected_edit_label != "(選択してください)":
+                        target_id = act_opts_edit[selected_edit_label]
+                        st.session_state.edit_cash_id = target_id
+                        
+                        # 対象データの取得
+                        target_row = my_cash_logs[my_cash_logs['activity_id'] == target_id].iloc[0]
+                        
+                        st.markdown(f"**選択中:** {selected_edit_label}")
+                        
+                        with st.form("edit_cash_form"):
+                            c_date, c_type = st.columns(2)
+                            ed_date = c_date.date_input("日付", pd.to_datetime(target_row['記録日']), key="ed_cash_date")
+                            
+                            # 活動種別のindex取得
+                            curr_type = target_row['活動']
+                            type_opts = ["出金", "入金"]
+                            try: t_idx = type_opts.index(curr_type)
+                            except: t_idx = 0
+                            ed_type = c_type.radio("区分", type_opts, index=t_idx, horizontal=True, key="ed_cash_type")
+                            
+                            c_amt, c_text = st.columns([1, 2])
+                            ed_amt = c_amt.number_input("金額", value=int(target_row['交通費・立替金']), min_value=0, step=100, key="ed_cash_amt")
+                            ed_text = c_text.text_input("摘要", value=target_row['要点'], key="ed_cash_text")
+                            
+                            c_upd, c_del = st.columns(2)
+                            if c_upd.form_submit_button("修正内容を保存", type="primary"):
+                                upd_cash_data = {
+                                    '記録日': str(ed_date),
+                                    '活動': ed_type,
+                                    '交通費・立替金': int(ed_amt),
+                                    '要点': ed_text
+                                }
+                                if update_data("activities", "activity_id", target_id, upd_cash_data, MAP_ACTIVITIES):
+                                    st.session_state.edit_cash_id = None
+                                    st.rerun()
+                                    
+                            if c_del.form_submit_button("この記録を削除", type="secondary"):
+                                if delete_data("activities", "activity_id", target_id, MAP_ACTIVITIES):
+                                    st.session_state.edit_cash_id = None
+                                    st.rerun()
+                    else:
+                        st.session_state.edit_cash_id = None
+                    
+                    st.divider()
+                    st.markdown("#### 🗑️ 履歴の一括削除")
+                    st.caption("重複データなどが発生した場合に、この利用者の**小口現金記録を全て削除**します。")
+                    if st.checkbox("全ての小口現金記録を削除する（取り消せません）", key="chk_del_all"):
+                        if st.button("一括削除を実行", type="primary", key="btn_del_all"):
+                            del_count = 0
+                            # my_cash_logs は既にこのユーザーの小口現金データのみ
+                            for _, row in my_cash_logs.iterrows():
+                                delete_data("activities", "activity_id", row['activity_id'], MAP_ACTIVITIES)
+                                del_count += 1
+                            st.success(f"{del_count}件のデータを削除しました。")
+                            time.sleep(1)
                             st.rerun()
-        else:
-            st.info("登録された財産はありません。")
+            else:
+                st.info("まだ記録がありません。")
+
 
 def render_person_registration(df_persons, guard_opts):
     custom_header("利用者情報登録")
@@ -715,12 +915,49 @@ def render_reports(df_persons):
             p_data = df_persons[df_persons['氏名'] == target].iloc[0].to_dict()
             excel = fill_excel_template(uploaded, p_data)
             st.download_button("ダウンロード", excel, f"{target}.xlsx")
+            
+    st.markdown("---")
+    custom_header("定期報告書 自動作成", help_text="システム内のデータから定期報告書(Excel)を自動生成します。")
+    
+    if st.button("定期報告書を作成 (自動)", type="primary"):
+        if not st.session_state.selected_person_id:
+            st.warning("対象者を選択してください。")
+        else:
+            # 必要なデータを収集
+            # 1. 本人情報
+            p_rows = df_persons[df_persons['person_id'] == st.session_state.selected_person_id]
+            if p_rows.empty:
+                st.error("本人データが見つかりません")
+                return
+            person_data = p_rows.iloc[0].to_dict()
+            
+            # 2. 財産情報
+            df_assets = fetch_table("assets", MAP_ASSETS)
+            df_assets['safe_pid'] = df_assets['person_id'].apply(to_safe_id)
+            current_pid_safe = to_safe_id(st.session_state.selected_person_id)
+            asset_rows = df_assets[df_assets['safe_pid'] == current_pid_safe].to_dict('records')
+            
+            # 3. 後見人情報 (システムユーザー)
+            df_sys = fetch_table("app_system_user", MAP_SYSTEM)
+            guardian_data = df_sys.iloc[0].to_dict() if not df_sys.empty else {}
+            
+            # 4. 活動記録 (今は使わないが将来用)
+            activity_rows = []
+            
+            # 作成実行
+            excel_out, err = create_periodic_report(person_data, guardian_data, asset_rows, activity_rows)
+            
+            if err:
+                st.error(f"エラー: {err}")
+            else:
+                st.success("作成しました！")
+                st.download_button("📥 定期報告書をダウンロード", excel_out, f"定期報告書_{person_data['氏名']}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 def render_data_management():
     custom_header("データ管理")
     st.info("Supabaseへのデータ移行用です。")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["利用者", "活動", "財産", "関係者", "システム"])
+    tab1, tab2, tab_cash, tab3, tab4, tab5 = st.tabs(["利用者", "活動", "小口現金", "財産", "関係者", "システム"])
     
     with tab1:
         csv_exp = fetch_table("persons", MAP_PERSONS).to_csv(index=False).encode('cp932')
@@ -734,6 +971,21 @@ def render_data_management():
         st.download_button("CSVエクスポート", csv_exp, "Activities.csv", "text/csv")
         up = st.file_uploader("インポート (Activities)")
         if up and st.button("実行", key="imp_a"):
+            process_import(up, "activities", MAP_ACTIVITIES, "activity_id")
+
+    with tab_cash:
+        # 小口現金（入金・出金）のみ抽出してエクスポート
+        df_act = fetch_table("activities", MAP_ACTIVITIES)
+        if not df_act.empty and '活動' in df_act.columns:
+            df_cash = df_act[df_act['活動'].isin(['入金', '出金'])]
+        else:
+            df_cash = pd.DataFrame(columns=MAP_ACTIVITIES.keys())
+        
+        csv_exp = df_cash.to_csv(index=False).encode('cp932')
+        st.download_button("CSVエクスポート (小口現金)", csv_exp, "PettyCash.csv", "text/csv")
+        st.caption("※インポートは通常の活動データとして取り込まれます。")
+        up = st.file_uploader("インポート (小口現金)")
+        if up and st.button("実行", key="imp_cash"):
             process_import(up, "activities", MAP_ACTIVITIES, "activity_id")
     
     with tab3:
