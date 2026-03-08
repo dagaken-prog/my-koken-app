@@ -251,13 +251,13 @@ def render_activity_log(df_persons, act_opts):
                 if st.session_state.new_act_content:
                     with st.spinner("AIが要約を行っています..."):
                         summarized = summarize_text(st.session_state.new_act_content)
-                        st.session_state.new_act_summary = summarized
+                        st.session_state.new_act_content = summarized
                         st.rerun()
                 else:
                     st.warning("まずは「活動内容」を入力してください。")
 
             # 入力フォーム
-            st.text_area("活動内容", key="new_act_content", height=100, help="詳細な活動内容を入力してください。AI要約を使うと、ここから「摘要」を自動生成します。")
+            st.text_area("活動内容", key="new_act_content", height=100, help="詳細な活動内容を入力してください。AI要約を使うと、活動記録に適した形式に自動整形されます。")
             
             col1, col2 = st.columns(2)
             in_date = col1.date_input("活動日", datetime.date.today(), key="new_act_date", format="YYYY/MM/DD")
