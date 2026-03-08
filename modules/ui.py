@@ -252,7 +252,6 @@ def render_activity_log(df_persons, act_opts):
                     with st.spinner("AIが要約を行っています..."):
                         summarized = summarize_text(st.session_state.new_act_content)
                         st.session_state.new_act_content = summarized
-                        st.rerun()
                 else:
                     st.warning("まずは「活動内容」を入力してください。")
 
@@ -265,15 +264,11 @@ def render_activity_log(df_persons, act_opts):
             
             c_cost, c_sum, c_deduct, c_imp = st.columns([1, 2, 1, 0.8])
             in_cost = c_cost.number_input("費用(円)", min_value=0, step=100, key="new_act_cost")
-            in_summary = c_sum.text_input("摘要 (必須)", key="new_act_summary", help="小口現金出納帳などに表示される短い説明です。")
+            in_summary = c_sum.text_input("摘要", key="new_act_summary", help="小口現金出納帳などに表示される短い説明です。")
             in_deduct = c_deduct.checkbox("小口支払い", key="new_act_deduct_cash", help="チェックすると小口現金出納帳の「出金」にも記録されます")
             in_imp = c_imp.checkbox("★重要", key="new_act_imp")
             
             def on_register_click():
-                if not st.session_state.new_act_summary:
-                    st.toast("摘要は必須です", icon="⚠️")
-                    return
-
                 new_data = {
                     'person_id': current_pid, 
                     '記録日': str(st.session_state.new_act_date), 
@@ -314,7 +309,7 @@ def render_activity_log(df_persons, act_opts):
             df_activities['safe_pid'] = df_activities['person_id'].apply(to_safe_id)
             current_pid_safe = to_safe_id(current_pid)
             
-            my_acts = df_activities[df_activities['safe_pid'] == current_pid_safe].copy()
+            my_acts = df_activities[(df_activities['safe_pid'] == current_pid_safe) & (df_activities['場所'] != '現金出納')].copy()
             
             if not my_acts.empty:
                 if '作成日時' in my_acts.columns:
@@ -392,7 +387,7 @@ def render_activity_log(df_persons, act_opts):
                             with st.expander(label_text, expanded=False):
                                 st.markdown(f"**活動種別:** {row['活動']}")
                                 st.markdown(f"""
-                                - **場所:** {row.get('場所') or '-'}
+                                - **摘要:** {row.get('場所') or '-'}
                                 - **時間:** {row.get('所要時間') or '0'} 分
                                 - **費用:** {row.get('交通費・立替金') or '0'} 円
                                 """)
