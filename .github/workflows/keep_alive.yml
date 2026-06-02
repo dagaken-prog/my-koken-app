@@ -1,0 +1,24 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    - cron: '0 0 */3 * *' # 3日おきに実行 (UTC 0:00, 日本時間 9:00)
+  workflow_dispatch: # GitHub上の画面から手動で実行することも可能
+
+jobs:
+  keep_alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        run: |
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "https://bghrnsnyvjrpxirlqhrn.supabase.co/rest/v1/persons?limit=1" \
+            -H "apikey: sb_secret_DgNwmTAriFJVzG-iw1XPvA_FLRIkDei" \
+            -H "Authorization: Bearer sb_secret_DgNwmTAriFJVzG-iw1XPvA_FLRIkDei")
+          
+          echo "Supabase Response Status Code: $STATUS_CODE"
+          if [ "$STATUS_CODE" -eq 200 ] || [ "$STATUS_CODE" -eq 401 ] || [ "$STATUS_CODE" -eq 403 ] || [ "$STATUS_CODE" -eq 406 ]; then
+            echo "Successfully pinged Supabase (DNS is active and service responded with $STATUS_CODE)"
+          else
+            echo "Warning: Received unexpected status code $STATUS_CODE"
+            exit 1
+          fi
