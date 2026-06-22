@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Ping Supabase Database
         run: |
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "https://bghrnsnyvjrpxirlqhrn.supabase.co/rest/v1/persons?limit=1" \
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "https://bghrnsnyvjrpxirlqhrn.supabase.co/rest/v1/" \
             -H "apikey: sb_secret_DgNwmTAriFJVzG-iw1XPvA_FLRIkDei" \
             -H "Authorization: Bearer sb_secret_DgNwmTAriFJVzG-iw1XPvA_FLRIkDei")
           
