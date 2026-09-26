@@ -8,7 +8,16 @@ on:
 jobs:
   keep_alive:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prevent GitHub Actions from pausing (60-day inactivity rule)
+        uses: gautamkrishnar/keepalive-workflow@v2
+
       - name: Ping Supabase Database
         run: |
           STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "https://bghrnsnyvjrpxirlqhrn.supabase.co/rest/v1/" \
