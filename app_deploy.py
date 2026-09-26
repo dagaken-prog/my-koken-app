@@ -20,9 +20,22 @@ def main():
 
     df_persons = fetch_table("persons", MAP_PERSONS)
     
-    if '生年月日' in df_persons.columns and not df_persons.empty:
-        df_persons['年齢'] = df_persons['生年月日'].apply(calculate_age)
-        df_persons['年齢'] = pd.to_numeric(df_persons['年齢'], errors='coerce')
+    if not df_persons.empty:
+        if '生年月日' in df_persons.columns:
+            df_persons['年齢'] = df_persons['生年月日'].apply(calculate_age)
+            df_persons['年齢'] = pd.to_numeric(df_persons['年齢'], errors='coerce')
+
+        # No.（ケース番号）を数値順に自動ソート
+        if 'ケース番号' in df_persons.columns:
+            num_case = pd.to_numeric(df_persons['ケース番号'], errors='coerce')
+            df_persons['_sort_num'] = num_case
+            df_persons['_sort_str'] = df_persons['ケース番号'].fillna('').astype(str)
+            df_persons['_sort_pid'] = pd.to_numeric(df_persons['person_id'], errors='coerce')
+            df_persons = df_persons.sort_values(
+                by=['_sort_num', '_sort_str', '_sort_pid'],
+                ascending=[True, True, True],
+                na_position='last'
+            ).drop(columns=['_sort_num', '_sort_str', '_sort_pid']).reset_index(drop=True)
 
     menu = render_sidebar()
 

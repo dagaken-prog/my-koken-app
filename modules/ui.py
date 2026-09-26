@@ -170,8 +170,8 @@ def render_activity_log(df_persons, act_opts):
     
     if not df_persons.empty and '現在の状態' in df_persons.columns:
         mask = df_persons['現在の状態'].fillna('').astype(str).isin(['受任中', '', 'nan'])
-        df_active = df_persons[mask].copy()
-        if df_active.empty: df_active = df_persons.copy()
+        df_active = df_persons[mask].copy().reset_index(drop=True)
+        if df_active.empty: df_active = df_persons.copy().reset_index(drop=True)
     else:
         df_active = pd.DataFrame(columns=MAP_PERSONS.keys())
 
